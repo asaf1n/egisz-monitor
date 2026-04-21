@@ -387,8 +387,8 @@ export class PostgresService {
                 ELSE mo_uid
               END,
               jname = CASE
-                WHEN $4 IS NOT NULL AND ($5 = TRUE OR jname IS NULL OR jname LIKE 'Неизвестная клиника (%)')
-                  THEN $4
+                WHEN $4::VARCHAR(255) IS NOT NULL AND ($5 = TRUE OR jname IS NULL OR jname LIKE 'Неизвестная клиника (%)')
+                  THEN $4::VARCHAR(255)
                 ELSE jname
               END,
               is_verified = is_verified OR $5
