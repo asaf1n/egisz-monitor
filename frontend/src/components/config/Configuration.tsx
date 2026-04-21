@@ -1,7 +1,12 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 
-import { fetchFirebirdConnection, saveFirebirdConnection, testFirebirdConnection } from "../../services/api";
-import { FirebirdConfigFormData } from "../../types";
+import {
+  fetchClinicDirectoryIssues,
+  fetchFirebirdConnection,
+  saveFirebirdConnection,
+  testFirebirdConnection
+} from "../../services/api";
+import { ClinicDirectoryIssue, FirebirdConfigFormData } from "../../types";
 
 const DEFAULT_PLACEHOLDERS = {
   host: "host.docker.internal",
@@ -41,6 +46,7 @@ export default function Configuration(): JSX.Element {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [usesDefaultConfig, setUsesDefaultConfig] = useState(false);
+  const [directoryIssues, setDirectoryIssues] = useState<ClinicDirectoryIssue[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -50,7 +56,7 @@ export default function Configuration(): JSX.Element {
       setAlert(null);
 
       try {
-        const config = await fetchFirebirdConnection();
+        const [config, issues] = await Promise.all([fetchFirebirdConnection(), fetchClinicDirectoryIssues()]);
 
         if (!isMounted) {
           return;
@@ -64,6 +70,7 @@ export default function Configuration(): JSX.Element {
           pass: config.pass
         });
         setUsesDefaultConfig(config.isDefault);
+        setDirectoryIssues(issues);
       } catch (error) {
         if (!isMounted) {
           return;
@@ -152,8 +159,7 @@ export default function Configuration(): JSX.Element {
               Параметры подключения
             </h1>
             <p className="mt-3 text-sm leading-6 text-ink/65 sm:text-base">
-              Укажите адрес сервера, порт, алиас или путь к базе, затем проверьте соединение и сохраните рабочую
-              конфигурацию.
+              Укажите адрес сервера, порт, алиас или путь к базе, затем проверьте соединение и сохраните рабочую конфигурацию.
             </p>
           </div>
 
@@ -174,8 +180,26 @@ export default function Configuration(): JSX.Element {
 
           {usesDefaultConfig ? (
             <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Используются настройки по умолчанию. Они подходят только если Firebird уже доступен по стандартному
-              адресу.
+              Используются настройки по умолчанию. Они подходят только если Firebird уже доступен по стандартному адресу.
+            </div>
+          ) : null}
+
+          {directoryIssues.length > 0 ? (
+            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950">
+              <p className="font-medium">Обнаружены неверифицированные клиники: {directoryIssues.length}</p>
+              <p className="mt-1">
+                Эти записи созданы автоматически из технических hostname. Их нужно сопоставить со справочником клиник.
+              </p>
+              <div className="mt-3 max-h-56 overflow-auto rounded-xl bg-white/70 p-3">
+                {directoryIssues.slice(0, 12).map((issue) => (
+                  <div key={issue.clinicId} className="border-b border-ink/8 py-2 last:border-b-0">
+                    <div className="font-medium text-ink">{issue.jname ?? issue.moUid}</div>
+                    <div className="text-xs text-ink/60">
+                      hostname: {issue.moDomen ?? "нет"} | mo_uid: {issue.moUid}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
 
@@ -230,7 +254,7 @@ export default function Configuration(): JSX.Element {
                     value={form.alias}
                     onChange={handleChange("alias")}
                   />
-                  <FieldHint>Например `proxy_egisz` или полный путь вроде `C:\\data\\egisz.fdb`.</FieldHint>
+                  <FieldHint>Например `proxy_egisz` или полный путь вида `C:\data\egisz.fdb`.</FieldHint>
                 </div>
 
                 <div>

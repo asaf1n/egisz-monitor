@@ -77,7 +77,6 @@ Wait-ForHealthyContainer -ContainerName "egisz-monitor-frontend"
 $frontendPort = Get-ServicePort -ContainerName "egisz-monitor-frontend" -ContainerPort "80/tcp"
 $backendPort = Get-ServicePort -ContainerName "egisz-monitor-backend" -ContainerPort "3000/tcp"
 $dbPort = Get-ServicePort -ContainerName "egisz-monitor-db" -ContainerPort "5432/tcp"
-
 Write-Host ""
 Write-Host "EGISZ Monitor started successfully." -ForegroundColor Green
 Write-Host "Frontend: http://localhost:$frontendPort"

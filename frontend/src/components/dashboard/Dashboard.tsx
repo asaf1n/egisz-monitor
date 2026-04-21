@@ -19,6 +19,7 @@ import {
   fetchClinicErrors,
   fetchDashboardKpi,
   fetchErrorsPie,
+  fetchEtlStatus,
   fetchHourlyTrend,
   fetchServiceHealth,
   fetchStatusHeatmap,
@@ -28,6 +29,7 @@ import {
   ClinicErrorRow,
   DashboardKPI,
   ErrorPieData,
+  EtlRunStatus,
   HourlyTrendRow,
   ServiceHealthRow,
   StatusHeatmapRow
@@ -43,25 +45,20 @@ const EMPTY_KPI: DashboardKPI = {
   uniqueErrors: 0
 };
 
-const STATUS_STYLES: Record<
-  StatusHeatmapRow["status"],
-  { badge: string; row: string; label: string }
-> = {
-  green: {
-    badge: "bg-emerald-500",
-    row: "bg-emerald-50/75",
-    label: "Норма"
-  },
-  yellow: {
-    badge: "bg-amber-400",
-    row: "bg-amber-50/75",
-    label: "Риск"
-  },
-  red: {
-    badge: "bg-rose-500",
-    row: "bg-rose-50/75",
-    label: "Сбой"
-  }
+const EMPTY_ETL_STATUS: EtlRunStatus = {
+  status: "idle",
+  stage: "idle",
+  message: "Синхронизация не запускалась",
+  startedAt: null,
+  finishedAt: null,
+  result: null,
+  error: null
+};
+
+const STATUS_STYLES: Record<StatusHeatmapRow["status"], { badge: string; row: string; label: string }> = {
+  green: { badge: "bg-emerald-500", row: "bg-emerald-50/75", label: "Норма" },
+  yellow: { badge: "bg-amber-400", row: "bg-amber-50/75", label: "Риск" },
+  red: { badge: "bg-rose-500", row: "bg-rose-50/75", label: "Сбой" }
 };
 
 function formatDate(value: string | null): string {
@@ -95,6 +92,23 @@ function formatHourLabel(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
+}
+
+function formatEtlStage(stage: EtlRunStatus["stage"]): string {
+  switch (stage) {
+    case "extracting":
+      return "Извлечение";
+    case "parsing":
+      return "Парсинг";
+    case "loading":
+      return "Загрузка";
+    case "completed":
+      return "Завершено";
+    case "failed":
+      return "Ошибка";
+    default:
+      return "Ожидание";
+  }
 }
 
 function KpiCard({ title, value, accent }: { title: string; value: string; accent: string }): JSX.Element {
@@ -132,6 +146,7 @@ export function Dashboard(): JSX.Element {
   const [hourlyTrend, setHourlyTrend] = useState<HourlyTrendRow[]>([]);
   const [clinicErrors, setClinicErrors] = useState<ClinicErrorRow[]>([]);
   const [serviceHealth, setServiceHealth] = useState<ServiceHealthRow[]>([]);
+  const [etlStatus, setEtlStatus] = useState<EtlRunStatus>(EMPTY_ETL_STATUS);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -145,13 +160,14 @@ export function Dashboard(): JSX.Element {
     setError(null);
 
     try {
-      const [kpiData, pieData, heatmapData, trendData, clinicData, serviceData] = await Promise.all([
+      const [kpiData, pieData, heatmapData, trendData, clinicData, serviceData, etlData] = await Promise.all([
         fetchDashboardKpi(),
         fetchErrorsPie(),
         fetchStatusHeatmap(),
         fetchHourlyTrend(),
         fetchClinicErrors(),
-        fetchServiceHealth()
+        fetchServiceHealth(),
+        fetchEtlStatus()
       ]);
 
       setKpi(kpiData);
@@ -160,6 +176,7 @@ export function Dashboard(): JSX.Element {
       setHourlyTrend(trendData);
       setClinicErrors(clinicData);
       setServiceHealth(serviceData);
+      setEtlStatus(etlData);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить данные дашборда");
     } finally {
@@ -173,26 +190,72 @@ export function Dashboard(): JSX.Element {
     void loadDashboard();
   }, []);
 
+  useEffect(() => {
+    if (!isSyncing) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void fetchEtlStatus()
+        .then(async (status) => {
+          setEtlStatus(status);
+
+          if (status.status === "completed" && status.result) {
+            window.clearInterval(timer);
+            setIsSyncing(false);
+            await loadDashboard({ silent: true });
+            setAlert({
+              tone: "success",
+              message: `Синхронизация завершена. Загружено ${status.result.inserted} записей из ${status.result.extracted}.`
+            });
+          }
+
+          if (status.status === "failed") {
+            window.clearInterval(timer);
+            setIsSyncing(false);
+            setAlert({
+              tone: "error",
+              message: status.error ?? "Синхронизация завершилась с ошибкой"
+            });
+          }
+        })
+        .catch((statusError) => {
+          window.clearInterval(timer);
+          setIsSyncing(false);
+          setAlert({
+            tone: "error",
+            message: statusError instanceof Error ? statusError.message : "Не удалось получить статус ETL"
+          });
+        });
+    }, 2000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [isSyncing]);
+
   async function handleSync(): Promise<void> {
     setIsSyncing(true);
     setAlert(null);
 
     try {
-      const result = await runEtlSync();
-      await loadDashboard({ silent: true });
-      setAlert({
-        tone: "success",
-        message: `Синхронизация завершена. Загружено ${result.inserted} записей из ${result.extracted}.`
-      });
+      const status = await runEtlSync();
+      setEtlStatus(status);
     } catch (syncError) {
+      setIsSyncing(false);
       setAlert({
         tone: "error",
         message: syncError instanceof Error ? syncError.message : "Не удалось синхронизировать данные"
       });
-    } finally {
-      setIsSyncing(false);
     }
   }
+
+  const etlToneClass =
+    etlStatus.status === "failed"
+      ? "border-rose-200 bg-rose-50 text-rose-800"
+      : etlStatus.status === "completed"
+        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+        : "border-amber-200 bg-amber-50 text-amber-900";
 
   return (
     <main className="min-h-screen bg-canvas text-ink">
@@ -205,7 +268,7 @@ export function Dashboard(): JSX.Element {
                 Монитор обмена с ЕГИСЗ
               </h1>
               <p className="mt-3 text-sm leading-6 text-ink/65 sm:text-base">
-                Сводка по загрузкам, ошибкам интеграции, динамике обменов и стабильности сервисов по данным ETL.
+                Единая оперативная витрина по обменам, ошибкам, активности клиник и стабильности сервисов.
               </p>
             </div>
 
@@ -219,9 +282,17 @@ export function Dashboard(): JSX.Element {
                 {isSyncing ? "Синхронизация..." : "Синхронизировать данные"}
               </button>
               <div className="rounded-full border border-ink/8 bg-canvas/70 px-4 py-2 text-sm text-ink/55">
-                Источник: Firebird, витрина: PostgreSQL
+                Источник: Firebird, аналитика: PostgreSQL / Metabase
               </div>
             </div>
+          </div>
+
+          <div className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${etlToneClass}`}>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <span className="font-medium">Статус ETL: {formatEtlStage(etlStatus.stage)}</span>
+              <span>{etlStatus.startedAt ? `Запуск: ${formatDate(etlStatus.startedAt)}` : "Запуск не выполнялся"}</span>
+            </div>
+            <div className="mt-2">{etlStatus.message}</div>
           </div>
 
           {alert ? (
@@ -249,11 +320,7 @@ export function Dashboard(): JSX.Element {
               <section className="mt-8 grid gap-4 md:grid-cols-3">
                 <KpiCard title="Всего записей за 24 часа" value={kpi.total.toLocaleString("ru-RU")} accent="bg-moss" />
                 <KpiCard title="Успешных, %" value={`${kpi.successRate.toFixed(2)}%`} accent="bg-clay" />
-                <KpiCard
-                  title="Уникальных ошибок"
-                  value={kpi.uniqueErrors.toLocaleString("ru-RU")}
-                  accent="bg-amber-500"
-                />
+                <KpiCard title="Уникальных ошибок" value={kpi.uniqueErrors.toLocaleString("ru-RU")} accent="bg-amber-500" />
               </section>
 
               <section className="mt-8 grid gap-6 xl:grid-cols-[1fr_1.1fr]">
@@ -262,14 +329,7 @@ export function Dashboard(): JSX.Element {
                     {errorsPie.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Pie
-                            data={errorsPie}
-                            dataKey="count"
-                            nameKey="category"
-                            innerRadius={70}
-                            outerRadius={110}
-                            paddingAngle={4}
-                          >
+                          <Pie data={errorsPie} dataKey="count" nameKey="category" innerRadius={70} outerRadius={110} paddingAngle={4}>
                             {errorsPie.map((entry, index) => (
                               <Cell key={`${entry.category}-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                             ))}
@@ -283,21 +343,6 @@ export function Dashboard(): JSX.Element {
                       </div>
                     )}
                   </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    {errorsPie.map((item, index) => (
-                      <div key={item.category} className="flex items-center justify-between rounded-2xl bg-white px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <span
-                            className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
-                          />
-                          <span className="text-sm text-ink/75">{item.category}</span>
-                        </div>
-                        <span className="text-sm font-semibold text-ink">{item.count.toLocaleString("ru-RU")}</span>
-                      </div>
-                    ))}
-                  </div>
                 </ChartCard>
 
                 <ChartCard eyebrow="Поток обмена" title="Почасовая динамика успехов и ошибок">
@@ -305,34 +350,12 @@ export function Dashboard(): JSX.Element {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={hourlyTrend}>
                         <CartesianGrid stroke="#d8d6d0" strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="hourBucket"
-                          tickFormatter={formatHourLabel}
-                          stroke="#4d564f"
-                          fontSize={12}
-                        />
+                        <XAxis dataKey="hourBucket" tickFormatter={formatHourLabel} stroke="#4d564f" fontSize={12} />
                         <YAxis stroke="#4d564f" fontSize={12} allowDecimals={false} />
-                        <Tooltip
-                          labelFormatter={(label) => formatDate(String(label))}
-                          formatter={(value: number) => value.toLocaleString("ru-RU")}
-                        />
+                        <Tooltip labelFormatter={(label) => formatDate(String(label))} formatter={(value: number) => value.toLocaleString("ru-RU")} />
                         <Legend />
-                        <Line
-                          type="monotone"
-                          dataKey="successCount"
-                          name="Успешно"
-                          stroke={SUCCESS_COLOR}
-                          strokeWidth={3}
-                          dot={false}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="errorCount"
-                          name="Ошибки"
-                          stroke={ERROR_COLOR}
-                          strokeWidth={3}
-                          dot={false}
-                        />
+                        <Line type="monotone" dataKey="successCount" name="Успешно" stroke={SUCCESS_COLOR} strokeWidth={3} dot={false} />
+                        <Line type="monotone" dataKey="errorCount" name="Ошибки" stroke={ERROR_COLOR} strokeWidth={3} dot={false} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -340,13 +363,14 @@ export function Dashboard(): JSX.Element {
               </section>
 
               <section className="mt-8 grid gap-6 xl:grid-cols-[1.15fr_1fr]">
-                <ChartCard eyebrow="Проблемные МО" title="Топ организаций по ошибкам за 7 дней">
+                <ChartCard eyebrow="Проблемные клиники" title="Топ организаций по ошибкам за 7 дней">
                   {clinicErrors.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="min-w-full border-separate border-spacing-y-3">
                         <thead>
                           <tr className="text-left text-sm text-ink/45">
-                            <th className="px-4 py-2">МО UID</th>
+                            <th className="px-4 py-2">Клиника</th>
+                            <th className="px-4 py-2">MO UID</th>
                             <th className="px-4 py-2">Ошибок</th>
                             <th className="px-4 py-2">Всего</th>
                             <th className="px-4 py-2">Успешность</th>
@@ -356,7 +380,8 @@ export function Dashboard(): JSX.Element {
                         <tbody>
                           {clinicErrors.map((row) => (
                             <tr key={row.moUid} className="bg-white text-sm text-ink">
-                              <td className="rounded-l-2xl px-4 py-4 font-medium">{row.moUid}</td>
+                              <td className="rounded-l-2xl px-4 py-4 font-medium">{row.clinicName ?? row.moUid}</td>
+                              <td className="px-4 py-4 text-ink/70">{row.moUid}</td>
                               <td className="px-4 py-4 text-rose-700">{row.errorCount.toLocaleString("ru-RU")}</td>
                               <td className="px-4 py-4">{row.totalCount.toLocaleString("ru-RU")}</td>
                               <td className="px-4 py-4">{row.successRate.toFixed(2)}%</td>
@@ -380,13 +405,7 @@ export function Dashboard(): JSX.Element {
                         <BarChart data={serviceHealth.slice(0, 8)} layout="vertical" margin={{ left: 16, right: 16 }}>
                           <CartesianGrid stroke="#d8d6d0" strokeDasharray="3 3" />
                           <XAxis type="number" stroke="#4d564f" fontSize={12} allowDecimals={false} />
-                          <YAxis
-                            type="category"
-                            dataKey="semdType"
-                            stroke="#4d564f"
-                            fontSize={12}
-                            width={90}
-                          />
+                          <YAxis type="category" dataKey="semdType" stroke="#4d564f" fontSize={12} width={120} />
                           <Tooltip formatter={(value: number) => value.toLocaleString("ru-RU")} />
                           <Legend />
                           <Bar dataKey="successCount" name="Успешно" fill={SUCCESS_COLOR} radius={[0, 10, 10, 0]} />
@@ -402,13 +421,14 @@ export function Dashboard(): JSX.Element {
                 </ChartCard>
               </section>
 
-              <section className="mt-8 grid gap-6 xl:grid-cols-[1.15fr_1fr]">
-                <ChartCard eyebrow="Активность МО" title="Статусы последних обменов">
+              <section className="mt-8">
+                <ChartCard eyebrow="Активность клиник" title="Статусы последних обменов">
                   <div className="overflow-x-auto">
                     <table className="min-w-full border-separate border-spacing-y-3">
                       <thead>
                         <tr className="text-left text-sm text-ink/45">
-                          <th className="px-4 py-2">МО UID</th>
+                          <th className="px-4 py-2">Клиника</th>
+                          <th className="px-4 py-2">MO UID</th>
                           <th className="px-4 py-2">Сервис</th>
                           <th className="px-4 py-2">Последняя активность</th>
                           <th className="px-4 py-2">Статус</th>
@@ -420,7 +440,8 @@ export function Dashboard(): JSX.Element {
 
                           return (
                             <tr key={`${row.mo_uid}-${row.kind}`} className={`${styles.row} text-sm text-ink`}>
-                              <td className="rounded-l-2xl px-4 py-4 font-medium">{row.mo_uid}</td>
+                              <td className="rounded-l-2xl px-4 py-4 font-medium">{row.clinicDisplayName}</td>
+                              <td className="px-4 py-4 text-ink/70">{row.mo_uid}</td>
                               <td className="px-4 py-4">{row.kind}</td>
                               <td className="px-4 py-4 text-ink/70">{formatDate(row.last_activity)}</td>
                               <td className="rounded-r-2xl px-4 py-4">
@@ -434,55 +455,7 @@ export function Dashboard(): JSX.Element {
                         })}
                       </tbody>
                     </table>
-
-                    {statusRows.length === 0 ? (
-                      <div className="mt-4 rounded-2xl border border-dashed border-ink/12 bg-white/60 p-6 text-center text-ink/55">
-                        Нет данных по активности медицинских организаций
-                      </div>
-                    ) : null}
                   </div>
-                </ChartCard>
-
-                <ChartCard eyebrow="Сводка сервисов" title="Текущая стабильность интеграционных контуров">
-                  {serviceHealth.length > 0 ? (
-                    <div className="space-y-3">
-                      {serviceHealth.slice(0, 8).map((row) => (
-                        <div key={row.semdType} className="rounded-2xl bg-white px-4 py-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <p className="text-sm font-semibold text-ink">{row.semdType}</p>
-                              <p className="mt-1 text-xs text-ink/50">Последний обмен: {formatDate(row.lastExchangeAt)}</p>
-                            </div>
-                            <span
-                              className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                row.errorCount === 0
-                                  ? "bg-emerald-50 text-emerald-800"
-                                  : row.successRate >= 95
-                                    ? "bg-amber-50 text-amber-800"
-                                    : "bg-rose-50 text-rose-800"
-                              }`}
-                            >
-                              {row.successRate.toFixed(2)}%
-                            </span>
-                          </div>
-                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-canvas">
-                            <div
-                              className="h-full rounded-full bg-moss"
-                              style={{ width: `${Math.max(4, Math.min(100, row.successRate))}%` }}
-                            />
-                          </div>
-                          <div className="mt-3 flex items-center justify-between text-xs text-ink/55">
-                            <span>Успешно: {row.successCount.toLocaleString("ru-RU")}</span>
-                            <span>Ошибки: {row.errorCount.toLocaleString("ru-RU")}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-ink/12 bg-white/60 p-6 text-center text-ink/55">
-                      Нет агрегированных данных по стабильности сервисов
-                    </div>
-                  )}
                 </ChartCard>
               </section>
             </>

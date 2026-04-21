@@ -15,6 +15,7 @@ interface ErrorPieRow {
 }
 
 interface StatusHeatmapRow {
+  clinic_display_name: string;
   mo_uid: string;
   semd_type: string;
   last_activity_at: Date | string | null;
@@ -28,6 +29,7 @@ interface TrendRow {
 }
 
 interface ClinicErrorRow {
+  jname: string | null;
   mo_uid: string;
   total_count: string;
   error_count: string;
@@ -51,25 +53,12 @@ export class ReportsController {
   ) {}
 
   runEtl = async (_request: Request, response: Response): Promise<void> => {
-    try {
-      const result = await this.etlService.run();
-      response.status(200).json(result);
-    } catch (error) {
-      const details = error instanceof Error ? error.message : "Unknown ETL error";
+    const status = this.etlService.start();
+    response.status(202).json(status);
+  };
 
-      if (details.includes("ETL is already running")) {
-        response.status(409).json({
-          message: "ETL execution is already in progress",
-          details
-        });
-        return;
-      }
-
-      response.status(500).json({
-        message: "ETL execution failed",
-        details
-      });
-    }
+  getEtlStatus = async (_request: Request, response: Response): Promise<void> => {
+    response.status(200).json(this.etlService.getStatus());
   };
 
   getKpi = async (_request: Request, response: Response): Promise<void> => {
@@ -114,6 +103,7 @@ export class ReportsController {
 
       response.status(200).json(
         result.rows.map((row) => ({
+          clinicDisplayName: row.clinic_display_name,
           moUid: row.mo_uid,
           semdType: row.semd_type,
           lastActivityAt: row.last_activity_at,
@@ -153,6 +143,7 @@ export class ReportsController {
 
       response.status(200).json(
         result.rows.map((row) => ({
+          clinicName: row.jname,
           moUid: row.mo_uid,
           totalCount: Number(row.total_count),
           errorCount: Number(row.error_count),
@@ -191,58 +182,55 @@ export class ReportsController {
   };
 
   private buildKpiQuery(): string {
-    const factTransactions = this.postgresService.getQualifiedTableName("fact_transactions");
+    const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
 
     return `
       SELECT
         COUNT(*)::BIGINT AS total_submissions,
         COALESCE(
           ROUND(
-            100.0 * COUNT(*) FILTER (WHERE ft.status = 'success') / NULLIF(COUNT(*), 0),
+            100.0 * COUNT(*) FILTER (WHERE ua.status = 'success') / NULLIF(COUNT(*), 0),
             2
           ),
           0
         ) AS success_rate,
-        COUNT(DISTINCT NULLIF(TRIM(ft.error_text), ''))::BIGINT AS unique_errors
-      FROM ${factTransactions} ft
-      WHERE ft.transaction_date >= NOW() - INTERVAL '24 hours'
+        COUNT(DISTINCT NULLIF(TRIM(ua.error_text), ''))::BIGINT AS unique_errors
+      FROM ${unifiedAnalytics} ua
+      WHERE ua.transaction_date >= NOW() - INTERVAL '24 hours'
     `;
   }
 
   private buildErrorsPieQuery(): string {
-    const factTransactions = this.postgresService.getQualifiedTableName("fact_transactions");
+    const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
 
     return `
       SELECT
-        COALESCE(NULLIF(TRIM(ft.error_category), ''), 'Неизвестная') AS category,
+        COALESCE(NULLIF(TRIM(ua.error_category_ru), ''), 'Неизвестная') AS category,
         COUNT(*)::BIGINT AS count
-      FROM ${factTransactions} ft
-      WHERE ft.status = 'error'
-        AND ft.transaction_date >= NOW() - INTERVAL '24 hours'
-      GROUP BY COALESCE(NULLIF(TRIM(ft.error_category), ''), 'Неизвестная')
+      FROM ${unifiedAnalytics} ua
+      WHERE ua.status = 'error'
+        AND ua.transaction_date >= NOW() - INTERVAL '24 hours'
+      GROUP BY COALESCE(NULLIF(TRIM(ua.error_category_ru), ''), 'Неизвестная')
       ORDER BY count DESC, category ASC
     `;
   }
 
   private buildStatusHeatmapQuery(): string {
-    const factTransactions = this.postgresService.getQualifiedTableName("fact_transactions");
-    const clinics = this.postgresService.getQualifiedTableName("dim_clinics");
-    const services = this.postgresService.getQualifiedTableName("dim_services");
+    const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
 
     return `
       WITH latest_activity AS (
         SELECT
-          dc.mo_uid,
-          COALESCE(ds.description, ds.service_type::TEXT, ds.kind::TEXT) AS semd_type,
-          MAX(ft.transaction_date) AS last_activity_at
-        FROM ${factTransactions} ft
-        INNER JOIN ${clinics} dc ON dc.clinic_id = ft.clinic_id
-        INNER JOIN ${services} ds ON ds.service_id = ft.service_id
+          ua.mo_uid,
+          COALESCE(ua.service_description, ua.service_type::TEXT, ua.service_kind::TEXT) AS semd_type,
+          MAX(ua.transaction_date) AS last_activity_at
+        FROM ${unifiedAnalytics} ua
         GROUP BY
-          dc.mo_uid,
-          COALESCE(ds.description, ds.service_type::TEXT, ds.kind::TEXT)
+          ua.mo_uid,
+          COALESCE(ua.service_description, ua.service_type::TEXT, ua.service_kind::TEXT)
       )
       SELECT
+        ua.clinic_display_name,
         la.mo_uid,
         la.semd_type,
         la.last_activity_at,
@@ -253,12 +241,21 @@ export class ReportsController {
           ELSE 'red'
         END AS status
       FROM latest_activity la
+      JOIN (
+        SELECT DISTINCT
+          ua.mo_uid,
+          ua.clinic_display_name,
+          COALESCE(ua.service_description, ua.service_type::TEXT, ua.service_kind::TEXT) AS semd_type
+        FROM ${unifiedAnalytics} ua
+      ) ua
+        ON ua.mo_uid = la.mo_uid
+       AND ua.semd_type = la.semd_type
       ORDER BY la.mo_uid ASC, la.semd_type ASC
     `;
   }
 
   private buildHourlyTrendQuery(): string {
-    const factTransactions = this.postgresService.getQualifiedTableName("fact_transactions");
+    const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
 
     return `
       WITH series AS (
@@ -270,12 +267,12 @@ export class ReportsController {
       ),
       aggregated AS (
         SELECT
-          date_trunc('hour', ft.transaction_date) AS hour_bucket,
-          COUNT(*) FILTER (WHERE ft.status = 'success')::BIGINT AS success_count,
-          COUNT(*) FILTER (WHERE ft.status = 'error')::BIGINT AS error_count
-        FROM ${factTransactions} ft
-        WHERE ft.transaction_date >= NOW() - INTERVAL '24 hours'
-        GROUP BY date_trunc('hour', ft.transaction_date)
+          date_trunc('hour', ua.transaction_date) AS hour_bucket,
+          COUNT(*) FILTER (WHERE ua.status = 'success')::BIGINT AS success_count,
+          COUNT(*) FILTER (WHERE ua.status = 'error')::BIGINT AS error_count
+        FROM ${unifiedAnalytics} ua
+        WHERE ua.transaction_date >= NOW() - INTERVAL '24 hours'
+        GROUP BY date_trunc('hour', ua.transaction_date)
       )
       SELECT
         s.hour_bucket,
@@ -288,54 +285,51 @@ export class ReportsController {
   }
 
   private buildClinicErrorsQuery(): string {
-    const factTransactions = this.postgresService.getQualifiedTableName("fact_transactions");
-    const clinics = this.postgresService.getQualifiedTableName("dim_clinics");
+    const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
 
     return `
       SELECT
-        dc.mo_uid,
+        ua.jname,
+        ua.mo_uid,
         COUNT(*)::BIGINT AS total_count,
-        COUNT(*) FILTER (WHERE ft.status = 'error')::BIGINT AS error_count,
+        COUNT(*) FILTER (WHERE ua.status = 'error')::BIGINT AS error_count,
         COALESCE(
           ROUND(
-            100.0 * COUNT(*) FILTER (WHERE ft.status = 'success') / NULLIF(COUNT(*), 0),
+            100.0 * COUNT(*) FILTER (WHERE ua.status = 'success') / NULLIF(COUNT(*), 0),
             2
           ),
           0
         ) AS success_rate,
-        MAX(ft.transaction_date) FILTER (WHERE ft.status = 'error') AS last_error_at
-      FROM ${factTransactions} ft
-      INNER JOIN ${clinics} dc ON dc.clinic_id = ft.clinic_id
-      WHERE ft.transaction_date >= NOW() - INTERVAL '7 days'
-      GROUP BY dc.mo_uid
-      HAVING COUNT(*) FILTER (WHERE ft.status = 'error') > 0
-      ORDER BY error_count DESC, last_error_at DESC NULLS LAST, dc.mo_uid ASC
+        MAX(ua.transaction_date) FILTER (WHERE ua.status = 'error') AS last_error_at
+      FROM ${unifiedAnalytics} ua
+      WHERE ua.transaction_date >= NOW() - INTERVAL '7 days'
+      GROUP BY ua.jname, ua.mo_uid
+      HAVING COUNT(*) FILTER (WHERE ua.status = 'error') > 0
+      ORDER BY error_count DESC, last_error_at DESC NULLS LAST, ua.jname ASC NULLS LAST, ua.mo_uid ASC
       LIMIT 10
     `;
   }
 
   private buildServiceHealthQuery(): string {
-    const factTransactions = this.postgresService.getQualifiedTableName("fact_transactions");
-    const services = this.postgresService.getQualifiedTableName("dim_services");
+    const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
 
     return `
       SELECT
-        COALESCE(ds.description, ds.service_type::TEXT, ds.kind::TEXT) AS semd_type,
+        ua.service_display_name AS semd_type,
         COUNT(*)::BIGINT AS total_count,
-        COUNT(*) FILTER (WHERE ft.status = 'success')::BIGINT AS success_count,
-        COUNT(*) FILTER (WHERE ft.status = 'error')::BIGINT AS error_count,
+        COUNT(*) FILTER (WHERE ua.status = 'success')::BIGINT AS success_count,
+        COUNT(*) FILTER (WHERE ua.status = 'error')::BIGINT AS error_count,
         COALESCE(
           ROUND(
-            100.0 * COUNT(*) FILTER (WHERE ft.status = 'success') / NULLIF(COUNT(*), 0),
+            100.0 * COUNT(*) FILTER (WHERE ua.status = 'success') / NULLIF(COUNT(*), 0),
             2
           ),
           0
         ) AS success_rate,
-        MAX(ft.transaction_date) AS last_exchange_at
-      FROM ${factTransactions} ft
-      INNER JOIN ${services} ds ON ds.service_id = ft.service_id
-      WHERE ft.transaction_date >= NOW() - INTERVAL '7 days'
-      GROUP BY COALESCE(ds.description, ds.service_type::TEXT, ds.kind::TEXT)
+        MAX(ua.transaction_date) AS last_exchange_at
+      FROM ${unifiedAnalytics} ua
+      WHERE ua.transaction_date >= NOW() - INTERVAL '7 days'
+      GROUP BY ua.service_display_name
       ORDER BY error_count DESC, success_rate ASC, semd_type ASC
     `;
   }
@@ -350,6 +344,7 @@ export function createReportsRouter(controller: ReportsController): Router {
   router.get("/hourly-trend", controller.getHourlyTrend);
   router.get("/clinic-errors", controller.getClinicErrors);
   router.get("/service-health", controller.getServiceHealth);
+  router.get("/etl-status", controller.getEtlStatus);
   router.post("/run-etl", controller.runEtl);
 
   return router;

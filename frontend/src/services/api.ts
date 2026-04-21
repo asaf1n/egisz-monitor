@@ -1,9 +1,10 @@
 import {
   ApiMutationResult,
   ClinicErrorRow,
+  ClinicDirectoryIssue,
   DashboardKPI,
   ErrorPieData,
-  EtlRunResult,
+  EtlRunStatus,
   FirebirdConfigFormData,
   FirebirdConfigView,
   HourlyTrendRow,
@@ -76,6 +77,7 @@ export async function fetchErrorsPie(): Promise<ErrorPieData[]> {
 export async function fetchStatusHeatmap(): Promise<StatusHeatmapRow[]> {
   const payload = await getJson<
     Array<{
+      clinicDisplayName: string;
       moUid: string;
       semdType: string;
       lastActivityAt: string;
@@ -84,6 +86,7 @@ export async function fetchStatusHeatmap(): Promise<StatusHeatmapRow[]> {
   >("/api/reports/status-heatmap");
 
   return payload.map((row) => ({
+    clinicDisplayName: row.clinicDisplayName,
     mo_uid: row.moUid,
     kind: row.semdType,
     last_activity: row.lastActivityAt,
@@ -103,12 +106,20 @@ export async function fetchServiceHealth(): Promise<ServiceHealthRow[]> {
   return getJson<ServiceHealthRow[]>("/api/reports/service-health");
 }
 
-export async function runEtlSync(): Promise<EtlRunResult> {
-  return postJson<EtlRunResult, Record<string, never>>("/api/reports/run-etl", {});
+export async function runEtlSync(): Promise<EtlRunStatus> {
+  return postJson<EtlRunStatus, Record<string, never>>("/api/reports/run-etl", {});
+}
+
+export async function fetchEtlStatus(): Promise<EtlRunStatus> {
+  return getJson<EtlRunStatus>("/api/reports/etl-status");
 }
 
 export async function fetchFirebirdConnection(): Promise<FirebirdConfigView> {
   return getJson<FirebirdConfigView>("/api/config/firebird");
+}
+
+export async function fetchClinicDirectoryIssues(): Promise<ClinicDirectoryIssue[]> {
+  return getJson<ClinicDirectoryIssue[]>("/api/config/clinic-directory-issues");
 }
 
 export async function testFirebirdConnection(payload: FirebirdConfigFormData): Promise<ApiMutationResult> {

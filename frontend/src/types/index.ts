@@ -16,6 +16,7 @@ export interface HourlyTrendRow {
 }
 
 export interface StatusHeatmapRow {
+  clinicDisplayName: string;
   mo_uid: string;
   kind: string;
   last_activity: string;
@@ -23,6 +24,7 @@ export interface StatusHeatmapRow {
 }
 
 export interface ClinicErrorRow {
+  clinicName: string | null;
   moUid: string;
   totalCount: number;
   errorCount: number;
@@ -51,6 +53,15 @@ export interface FirebirdConfigView extends FirebirdConfigFormData {
   isDefault: boolean;
 }
 
+export interface ClinicDirectoryIssue {
+  clinicId: number;
+  jid: number;
+  moUid: string;
+  moDomen: string | null;
+  jname: string | null;
+  isVerified: boolean;
+}
+
 export interface ApiMutationResult {
   ok: boolean;
   message: string;
@@ -61,4 +72,14 @@ export interface EtlRunResult {
   transformed: number;
   inserted: number;
   skipped: number;
+}
+
+export interface EtlRunStatus {
+  status: "idle" | "running" | "completed" | "failed";
+  stage: "idle" | "extracting" | "parsing" | "loading" | "completed" | "failed";
+  message: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  result: EtlRunResult | null;
+  error: string | null;
 }

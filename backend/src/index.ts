@@ -12,6 +12,7 @@ import { loadConfig } from "./utils/validation";
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
   const postgresService = new PostgresService(config.postgres);
+  await postgresService.ensureSchema();
   const firebirdService = new FirebirdService(config.firebird, postgresService);
   const etlService = new EtlService(firebirdService, postgresService, config.etlBatchSize);
   const databaseController = new DatabaseController(firebirdService, postgresService);
@@ -26,6 +27,7 @@ async function bootstrap(): Promise<void> {
 
   app.get("/api/database/check", databaseController.checkConnections);
   app.get("/api/config/firebird", databaseController.getFirebird);
+  app.get("/api/config/clinic-directory-issues", databaseController.getClinicDirectoryIssues);
   app.post("/api/config/test-firebird", databaseController.testFirebird);
   app.post("/api/config/save-firebird", databaseController.saveFirebird);
   app.use("/api/reports", createReportsRouter(reportsController));

@@ -29,7 +29,12 @@ export class DatabaseController {
       await this.postgresService.ping();
     } catch (error) {
       status.postgres = "error";
-      status.details.push(error instanceof Error ? error.message : "Unknown PostgreSQL error");
+      const issue = this.postgresService.inspectConnectionIssue(error);
+      status.details.push(issue.message);
+
+      if (issue.userHint) {
+        status.details.push(issue.userHint);
+      }
     }
 
     const statusCode = status.firebird === "ok" && status.postgres === "ok" ? 200 : 503;
@@ -65,9 +70,24 @@ export class DatabaseController {
 
       response.status(200).json(storedConfig);
     } catch (error) {
+      const issue = this.postgresService.inspectConnectionIssue(error);
       response.status(500).json({
         ok: false,
-        message: error instanceof Error ? error.message : "Unknown Firebird config read error"
+        message: issue.message,
+        code: issue.code,
+        hint: issue.userHint
+      });
+    }
+  };
+
+  getClinicDirectoryIssues = async (_request: Request, response: Response): Promise<void> => {
+    try {
+      const issues = await this.postgresService.listUnverifiedClinics();
+      response.status(200).json(issues);
+    } catch (error) {
+      response.status(500).json({
+        ok: false,
+        message: error instanceof Error ? error.message : "Unknown clinic directory error"
       });
     }
   };

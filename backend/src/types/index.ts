@@ -58,8 +58,10 @@ export interface FirebirdLicenseLogRow {
   METHOD?: string | null;
   GRPID?: number | string | null;
   JID?: number | string | null;
+  JNAME?: string | null;
   MO_UID?: string | null;
   MO_DOMEN?: string | null;
+  REPLYTO?: string | null;
   KIND?: number | string | null;
   SERVICE_TYPE?: number | string | null;
   [key: string]: unknown;
@@ -69,6 +71,8 @@ export interface ClinicDimensionRecord {
   jid: number;
   moUid: string;
   moDomen: string | null;
+  jname: string | null;
+  isVerified: boolean;
 }
 
 export interface ServiceDimensionRecord {
@@ -85,10 +89,19 @@ export interface FactTransactionRecord {
   errorText: string | null;
 }
 
+export interface EgiszErrorRecord {
+  originalLogId: number;
+  transactionDate: Date;
+  errorCategory: string;
+  errorText: string;
+  hostname: string | null;
+}
+
 export interface StarSchemaLogRecord {
   clinic: ClinicDimensionRecord;
   service: ServiceDimensionRecord;
   fact: FactTransactionRecord;
+  error: EgiszErrorRecord | null;
 }
 
 export interface EtlRunResult {
@@ -98,8 +111,33 @@ export interface EtlRunResult {
   skipped: number;
 }
 
+export interface EtlRunStatus {
+  status: "idle" | "running" | "completed" | "failed";
+  stage: "idle" | "extracting" | "parsing" | "loading" | "completed" | "failed";
+  message: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  result: EtlRunResult | null;
+  error: string | null;
+}
+
 export interface DatabaseStatus {
   firebird: "ok" | "error";
   postgres: "ok" | "error";
   details: string[];
+}
+
+export interface ClinicDirectoryIssue {
+  clinicId: number;
+  jid: number;
+  moUid: string;
+  moDomen: string | null;
+  jname: string | null;
+  isVerified: boolean;
+}
+
+export interface PostgresConnectionIssue {
+  code: "authentication_failed" | "database_unavailable" | "schema_migration_failed" | "unknown";
+  message: string;
+  userHint: string | null;
 }
