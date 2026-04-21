@@ -1,0 +1,88 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: egisz-monitor-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-egisz_monitor}
+      POSTGRES_USER: ${DB_USER:-egisz}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-egisz}
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=200"]
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-egisz} -d ${DB_NAME:-egisz_monitor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: egisz-monitor-backend
+    env_file:
+      - ./backend/.env.example
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      POSTGRES_HOST: db
+      POSTGRES_PORT: ${DB_PORT:-5432}
+      POSTGRES_DB: ${DB_NAME:-egisz_monitor}
+      POSTGRES_USER: ${DB_USER:-egisz}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-egisz}
+      POSTGRES_SCHEMA: ${POSTGRES_SCHEMA:-public}
+      FIREBIRD_HOST: ${FIREBIRD_HOST:-host.docker.internal}
+      FIREBIRD_PORT: ${FIREBIRD_PORT:-3050}
+      FIREBIRD_ALIAS: ${FIREBIRD_ALIAS:-proxy_egisz}
+      FIREBIRD_USER: ${FIREBIRD_USER:-sysdba}
+      FIREBIRD_PASSWORD: ${FIREBIRD_PASSWORD:-masterkey}
+      FIREBIRD_PAGE_SIZE: ${FIREBIRD_PAGE_SIZE:-4096}
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: egisz-monitor-frontend
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost/api}
+    env_file:
+      - ./frontend/.env.example
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8812}:80"
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
