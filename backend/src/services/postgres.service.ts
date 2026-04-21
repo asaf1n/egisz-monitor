@@ -37,6 +37,87 @@ export class PostgresService {
   private readonly schemaName: string;
   private static readonly ETL_LOCK_NAMESPACE = 48219;
   private static readonly ETL_LOCK_KEY = 1;
+  private static readonly SEMD_DICTIONARY: Readonly<Record<string, string>> = {
+    "40": "Протокол телемедицинской консультации",
+    "43": "Направление на госпитализацию, восстановительное лечение, обследование, консультацию",
+    "63": "Медицинское заключение об отсутствии медицинских противопоказаний к владению оружием",
+    "64": "Медицинское заключение об отсутствии в организме человека наркотических средств, психотропных веществ и их метаболитов",
+    "65": "Справка для получения путевки на санаторно-курортное лечение",
+    "69": "Протокол гемотрансфузии",
+    "70": "Справка о результатах химико-токсикологических исследований",
+    "73": "Справка о состоянии на учете в диспансере",
+    "74": "Протокол прижизненного патологоанатомического исследования",
+    "75": "Протокол лабораторного исследования",
+    "76": "Медицинское свидетельство о рождении",
+    "78": "Талон № 2 на получение специальных талонов (именных направлений) на проезд к месту лечения",
+    "79": "Справка о прохождении медицинского освидетельствования в психоневрологическом диспансере",
+    "80": "Справка об отсутствии контактов с инфекционными больными",
+    "81": "Справка о временной нетрудоспособности студента/учащегося (болезнь, карантин)",
+    "82": "Медзаключение о группе для занятий физкультурой несовершеннолетнего",
+    "83": "Медицинское заключение об отсутствии противопоказаний к занятию спортом",
+    "84": "Медицинская справка в бассейн",
+    "86": "Направление к месту лечения для получения медицинской помощи",
+    "87": "Справка о состоянии здоровья ребенка, отъезжающего в лагерь (отдых/оздоровление)",
+    "88": "Медицинская справка (для выезжающего за границу)",
+    "93": "Протокол цитологического исследования",
+    "96": "Сведения о результатах диспансеризации или проф. осмотра",
+    "100": "Справка об оплате медицинских услуг для налоговых органов РФ",
+    "101": "Медзаключение о допуске к работам на высоте / обслуживанию подъемных сооружений",
+    "102": "Справка об отказе в направлении на МСЭ",
+    "103": "Медзаключение по результатам предварительного (периодического) медосмотра",
+    "104": "Экстренное извещение об инфекционном заболевании / реакции на прививку",
+    "105": "Сертификат профилактических прививок",
+    "106": "Справка о постановке на учет по беременности",
+    "107": "Справка донору об освобождении от работы",
+    "110": "Протокол инструментального исследования",
+    "111": "Протокол консультации в рамках диспансерного наблюдения",
+    "114": "Сведения медицинского свидетельства о перинатальной смерти (бумажная форма)",
+    "115": "Карта вызова скорой медицинской помощи",
+    "116": "Уведомление о выявлении противопоказаний к владению оружием",
+    "118": "Сведения медицинского свидетельства о рождении (бумажная форма)",
+    "119": "Протокол консультации",
+    "121": "Направление на медико-социальную экспертизу (МСЭ)",
+    "122": "Сведения о результатах диспансеризации или проф. осмотра (актуальная ред.)",
+    "123": "Направление на госпитализацию для оказания ВМП",
+    "124": "Направление на госпитализацию для оказания специализированной медпомощи",
+    "127": "Медицинское свидетельство о перинатальной смерти",
+    "129": "Эпикриз по результатам диспансеризации / проф. осмотра",
+    "131": "Направление к месту лечения для получения медицинской помощи",
+    "132": "Талон на оказание ВМП",
+    "133": "Этапный эпикриз",
+    "134": "Предоперационный эпикриз",
+    "135": "Выписка из истории болезни",
+    "136": "Экстренное извещение о случае острого отравления химической этиологии",
+    "137": "Санаторно-курортная карта",
+    "138": "Программа дополнительного обследования гражданина (ФБМСЭ)",
+    "139": "Справка о результатах химико-токсикологических исследований",
+    "141": "Льготный рецепт на лекарственный препарат / изд. медназначения",
+    "142": "Заключение об установлении факта поствакцинального осложнения",
+    "143": "Заключение о нуждаемости престарелого гражданина в постоянном уходе",
+    "144": "Заключение врачебной комиссии о нуждаемости ветерана в протезах",
+    "145": "Справка о показаниях, по которым ребенок не посещает ДОУ в период учебного процесса",
+    "146": "Талон № 2 на получение спецталонов на проезд к месту лечения",
+    "147": "Выписной эпикриз в стационаре",
+    "148": "Рецепт на лекарственный препарат",
+    "149": "Медзаключение о группе для занятий физкультурой несовершеннолетнего (актуальное)",
+    "150": "Медицинская справка в бассейн (актуальная)",
+    "151": "Справка для получения путевки на санаторно-курортное лечение",
+    "152": "Медицинское заключение об отсутствии противопоказаний к занятию спортом",
+    "153": "Медицинская справка (для выезжающего за границу)",
+    "154": "Справка об отсутствии контактов с инфекционными больными",
+    "155": "Справка об отсутствии противопоказаний для работы с гостайной",
+    "156": "Заключение для граждан, намеревающихся усыновить/удочерить детей",
+    "158": "Выписка из протокола решения врачебной комиссии",
+    "159": "Статистическая карта выбывшего из стационара",
+    "160": "Протокол ТМК для трансграничных решений",
+    "161": "Санаторно-курортная карта для детей",
+    "163": "Протокол медицинской манипуляции",
+    "164": "Экстренное извещение об инфекционном заболевании (актуальное)",
+    "169": "Справка о временной нетрудоспособности студента (ред. 4)",
+    "170": "Сертификат профилактических прививок (ред. 2)",
+    "171": "Медзаключение о наличии/отсутствии противопоказаний у водителей ТС",
+    "172": "Справка о состоянии на учете в диспансере"
+  };
 
   constructor(private readonly config: AppConfig["postgres"]) {
     this.schemaName = this.validateSchemaName(config.schema);
@@ -50,6 +131,19 @@ export class PostgresService {
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000
     });
+  }
+
+  private buildSemdNameSql(columnRef: string): string {
+    const branches = Object.entries(PostgresService.SEMD_DICTIONARY)
+      .map(([code, name]) => `WHEN ${columnRef} = '${code}' THEN '${name.replace(/'/g, "''")}'`)
+      .join("\n          ");
+
+    return `
+        CASE
+          ${branches}
+          ELSE NULL
+        END
+    `;
   }
 
   async ensureSchema(): Promise<void> {
@@ -97,10 +191,19 @@ export class PostgresService {
       await client.query(`
         CREATE TABLE IF NOT EXISTS ${this.schemaName}.dim_services (
           service_id SERIAL PRIMARY KEY,
-          kind BIGINT NOT NULL UNIQUE,
-          service_type BIGINT NOT NULL,
+          kind VARCHAR(255) NOT NULL UNIQUE,
+          service_type VARCHAR(64) NOT NULL,
           description VARCHAR(255)
         )
+      `);
+      await this.dropAnalyticsViews(client);
+      await client.query(`
+        ALTER TABLE ${this.schemaName}.dim_services
+        ALTER COLUMN kind TYPE VARCHAR(255) USING kind::text
+      `);
+      await client.query(`
+        ALTER TABLE ${this.schemaName}.dim_services
+        ALTER COLUMN service_type TYPE VARCHAR(64) USING service_type::text
       `);
 
       await client.query(`
@@ -159,9 +262,11 @@ export class PostgresService {
       await this.backfillEgiszErrorClinicIds(client);
       await this.enforceEgiszErrorClinicForeignKey(client);
       await this.createIndexes(client);
+      await this.cleanupTechnicalData(client);
       await this.createAnalyticsViews(client);
 
       await client.query("COMMIT");
+      await this.verifySchemaIntegrity();
     } catch (error) {
       await this.rollbackQuietly(client);
       throw this.toDatabaseError(error, "Failed to ensure PostgreSQL schema");
@@ -317,6 +422,46 @@ export class PostgresService {
     }
   }
 
+  async verifySchemaIntegrity(): Promise<void> {
+    const requiredTables = ["dim_clinics", "fact_transactions", "dim_error_costs"] as const;
+    const result = await this.pool.query<{ table_name: string }>(
+      `
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = $1
+          AND table_name = ANY($2::text[])
+      `,
+      [this.schemaName, requiredTables]
+    );
+
+    const existingTables = new Set(result.rows.map((row) => row.table_name));
+    const missingTables = requiredTables.filter((tableName) => !existingTables.has(tableName));
+
+    if (missingTables.length > 0) {
+      throw new Error(
+        `Schema integrity verification failed for ${this.schemaName}. Missing tables: ${missingTables.join(", ")}`
+      );
+    }
+  }
+
+  async getSystemHealth(): Promise<{ postgres: "ok"; activeClinics: number }> {
+    await this.ensureSchema();
+    await this.ping();
+
+    const result = await this.pool.query<{ active_clinics: string }>(
+      `
+        SELECT COUNT(DISTINCT clinic_id)::BIGINT AS active_clinics
+        FROM ${this.schemaName}.fact_transactions
+        WHERE transaction_date >= NOW() - INTERVAL '24 hours'
+      `
+    );
+
+    return {
+      postgres: "ok",
+      activeClinics: Number(result.rows[0]?.active_clinics ?? 0)
+    };
+  }
+
   inspectConnectionIssue(error: unknown): PostgresConnectionIssue {
     const message = error instanceof Error ? error.message : "Unknown PostgreSQL error";
 
@@ -419,6 +564,17 @@ export class PostgresService {
     );
 
     return result.rows;
+  }
+
+  private async cleanupTechnicalData(client: PoolClient): Promise<void> {
+    await client.query(
+      `
+        DELETE FROM ${this.schemaName}.dim_clinics
+        WHERE is_verified = FALSE
+          AND LOWER(COALESCE(mo_domen, '')) = ANY($1::text[])
+      `,
+      [["127.0.0.1", "localhost", "host.docker.internal"]]
+    );
   }
 
   private async upsertClinic(client: PoolClient, record: StarSchemaLogRecord): Promise<number> {
@@ -814,15 +970,7 @@ export class PostgresService {
   }
 
   private async createAnalyticsViews(client: PoolClient): Promise<void> {
-    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_service_hourly_health`);
-    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_clinic_hourly_sla`);
-    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_error_fingerprints`);
-    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_support_economic_metrics`);
-    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_vpn_node_stability`);
-    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_unified_analytics`);
-    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_clinic_sla`);
-    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_error_analysis`);
-    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_daily_summary`);
+    await this.dropAnalyticsViews(client);
 
     await client.query(`
       CREATE OR REPLACE VIEW ${this.schemaName}.view_daily_summary AS
@@ -889,8 +1037,16 @@ export class PostgresService {
       LEFT JOIN clinic_last_response AS clr
         ON clr.clinic_id = dc.clinic_id
     `);
-    await client.query(`
-      CREATE OR REPLACE VIEW ${this.schemaName}.v_unified_analytics AS
+      await client.query(`
+        UPDATE ${this.schemaName}.dim_services
+        SET kind = description
+        WHERE description IS NOT NULL
+          AND description <> ''
+          AND description <> kind
+          AND description LIKE '/%'
+      `);
+      await client.query(`
+        CREATE OR REPLACE VIEW ${this.schemaName}.v_unified_analytics AS
       SELECT
         ft.transaction_id,
         ft.original_log_id,
@@ -911,7 +1067,8 @@ export class PostgresService {
         ds.kind AS service_kind,
         ds.service_type,
         ds.description AS service_description,
-        COALESCE(ds.description, ds.service_type::TEXT, ds.kind::TEXT) AS service_display_name,
+        ${this.buildSemdNameSql("ds.kind")} AS service_kind_name,
+        COALESCE(${this.buildSemdNameSql("ds.kind")}, ds.description, ds.service_type, ds.kind) AS service_display_name,
         ft.error_category,
         CASE
           WHEN ft.error_category = 'network' THEN 'Сетевая'
@@ -1135,6 +1292,18 @@ export class PostgresService {
       FROM hourly_stats
       ORDER BY hostname, date_hour DESC
     `);
+  }
+
+  private async dropAnalyticsViews(client: PoolClient): Promise<void> {
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_unified_analytics CASCADE`);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_support_economic_metrics CASCADE`);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_vpn_node_stability CASCADE`);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_error_fingerprints CASCADE`);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_clinic_hourly_sla CASCADE`);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_service_hourly_health CASCADE`);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_clinic_sla CASCADE`);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_error_analysis CASCADE`);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_daily_summary CASCADE`);
   }
 
   private validateSchemaName(value: string): string {

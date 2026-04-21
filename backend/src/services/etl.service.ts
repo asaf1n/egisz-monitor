@@ -180,8 +180,8 @@ export class EtlService {
       `log-group-${this.toOptionalNumber(row.GRPID) ?? originalLogId}`;
     const jname = this.normalizeText(this.toOptionalString(row.JNAME));
     const serviceDescription = this.buildServiceDescription(uri, method, action, row);
-    const kind = this.toOptionalNumber(row.KIND) ?? this.toStablePositiveNumber(serviceDescription);
-    const serviceType = this.toOptionalNumber(row.SERVICE_TYPE) ?? this.toOptionalNumber(row.LOGTYPE) ?? kind;
+    const kind = this.normalizeCodeValue(row.KIND) ?? serviceDescription;
+    const serviceType = this.normalizeCodeValue(row.SERVICE_TYPE) ?? this.normalizeCodeValue(row.LOGTYPE) ?? kind;
     const transactionDate =
       this.toOptionalDate(row.MODIFYDATE) ??
       this.toOptionalDate(row.LOG_CREATED_AT) ??
@@ -636,14 +636,21 @@ export class EtlService {
     return "unknown-service";
   }
 
-  private toStablePositiveNumber(value: string): number {
-    let hash = 0;
-
-    for (let index = 0; index < value.length; index += 1) {
-      hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  private normalizeCodeValue(value: unknown): string | null {
+    if (value === null || value === undefined) {
+      return null;
     }
 
-    return hash === 0 ? 1 : hash;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(Math.trunc(value));
+    }
+
+    if (typeof value === "string") {
+      const normalized = value.trim();
+      return normalized.length > 0 ? normalized : null;
+    }
+
+    return null;
   }
 
   private updateStatus(stage: EtlRunStatus["stage"], message: string): void {

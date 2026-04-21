@@ -77,6 +77,7 @@ COPY package*.json ./
 # Install ONLY production dependencies
 # Using --omit=dev instead of deprecated --only=production
 RUN npm ci --omit=dev --audit=false && \
+    npm prune --omit=dev && \
     npm cache clean --force
 
 # Copy compiled JavaScript from builder stage

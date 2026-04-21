@@ -1,14 +1,15 @@
 {
   "name": "Анализ ошибок EGISZ",
-  "description": "Детальный анализ всех типов ошибок в системе EGISZ",
+  "description": "Детальный разбор ошибок ЕГИСЗ: наиболее частые инциденты, разрез по клиникам и оценка роста проблем по сравнению с предыдущим окном.",
   "collection_id": null,
   "cards": [
     {
       "name": "Топ ошибок по частоте",
+      "description": "Наиболее частые тексты ошибок за последние 30 дней. Подходит для поиска массовых и повторяющихся проблем.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT\n    ua.error_text AS 'Текст ошибки',\n    COUNT(*)::bigint AS 'Частота',\n    COUNT(DISTINCT ua.clinic_id)::bigint AS 'Количество клиник',\n    MAX(ua.transaction_date) AS 'Последний раз'\nFROM public.v_unified_analytics AS ua\nWHERE ua.is_error\n  AND ua.transaction_date >= NOW() - INTERVAL '30 days'\nGROUP BY ua.error_text\nORDER BY 'Частота' DESC\nLIMIT 50;"
+          "query": "SELECT\n    ua.error_text AS \"Текст ошибки\",\n    COUNT(*)::bigint AS \"Частота\",\n    COUNT(DISTINCT ua.clinic_id)::bigint AS \"Количество клиник\",\n    MAX(ua.transaction_date) AS \"Последний раз\"\nFROM public.v_unified_analytics AS ua\nWHERE ua.is_error\n  AND ua.transaction_date >= NOW() - INTERVAL '30 days'\nGROUP BY ua.error_text\nORDER BY 2 DESC\nLIMIT 50;"
         },
         "database": 1
       },
@@ -18,16 +19,17 @@
         "table.cell_column": null
       },
       "sizeX": 12,
-      "sizeY": 6,
+      "sizeY": 8,
       "row": 0,
       "col": 0
     },
     {
       "name": "Типы ошибок по клиентам",
+      "description": "Показывает распределение ошибок по клиникам, категориям и подкатегориям для локализации проблемных направлений.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT\n    ua.clinic_display_name AS 'Название клиники',\n    ua.error_category_ru AS 'Категория ошибки',\n    ua.error_subcategory AS 'Подкатегория ошибки',\n    COUNT(*)::bigint AS 'Количество ошибок',\n    MAX(ua.transaction_date) AS 'Последняя ошибка'\nFROM public.v_unified_analytics AS ua\nWHERE ua.is_error\n  AND ua.transaction_date >= NOW() - INTERVAL '30 days'\nGROUP BY ua.clinic_display_name, ua.error_category_ru, ua.error_subcategory\nORDER BY 'Количество ошибок' DESC, ua.clinic_display_name ASC\nLIMIT 20;"
+          "query": "SELECT\n    ua.clinic_display_name AS \"Название клиники\",\n    ua.error_category_ru AS \"Категория ошибки\",\n    ua.error_subcategory AS \"Подкатегория ошибки\",\n    COUNT(*)::bigint AS \"Количество ошибок\",\n    MAX(ua.transaction_date) AS \"Последняя ошибка\"\nFROM public.v_unified_analytics AS ua\nWHERE ua.is_error\n  AND ua.transaction_date >= NOW() - INTERVAL '30 days'\nGROUP BY ua.clinic_display_name, ua.error_category_ru, ua.error_subcategory\nORDER BY 4 DESC, ua.clinic_display_name ASC\nLIMIT 20;"
         },
         "database": 1
       },
@@ -37,16 +39,17 @@
         "table.cell_column": null
       },
       "sizeX": 12,
-      "sizeY": 6,
-      "row": 6,
-      "col": 0
+      "sizeY": 8,
+      "row": 0,
+      "col": 12
     },
     {
       "name": "Рост инцидентов по клиникам",
+      "description": "Показывает клиники, у которых количество инцидентов выросло относительно предыдущих 24 часов.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "WITH current_window AS (\n    SELECT\n        ua.clinic_id,\n        ua.clinic_display_name,\n        COUNT(*)::bigint AS incidents_last_24h\n    FROM public.v_unified_analytics AS ua\n    WHERE ua.is_error\n      AND ua.transaction_date >= NOW() - INTERVAL '24 hours'\n    GROUP BY ua.clinic_id, ua.clinic_display_name\n),\nprevious_window AS (\n    SELECT\n        ua.clinic_id,\n        COUNT(*)::bigint AS incidents_prev_24h\n    FROM public.v_unified_analytics AS ua\n    WHERE ua.is_error\n      AND ua.transaction_date >= NOW() - INTERVAL '48 hours'\n      AND ua.transaction_date < NOW() - INTERVAL '24 hours'\n    GROUP BY ua.clinic_id\n)\nSELECT\n    cw.clinic_display_name AS 'Название клиники',\n    cw.incidents_last_24h AS 'Инциденты за последние 24ч',\n    COALESCE(pw.incidents_prev_24h, 0) AS 'Инциденты за предыдущие 24ч',\n    cw.incidents_last_24h - COALESCE(pw.incidents_prev_24h, 0) AS 'Абсолютный рост инцидентов',\n    CASE\n        WHEN COALESCE(pw.incidents_prev_24h, 0) = 0 THEN NULL\n        ELSE ROUND(\n            100.0 * (cw.incidents_last_24h - pw.incidents_prev_24h) / pw.incidents_prev_24h,\n            2\n        )\n    END AS 'Процент роста инцидентов'\nFROM current_window AS cw\nLEFT JOIN previous_window AS pw\n    ON pw.clinic_id = cw.clinic_id\nORDER BY incident_growth_abs DESC, cw.incidents_last_24h DESC, cw.clinic_display_name ASC\nLIMIT 20;"
+          "query": "WITH current_window AS (\n    SELECT\n        ua.clinic_id,\n        ua.clinic_display_name,\n        COUNT(*)::bigint AS incidents_last_24h\n    FROM public.v_unified_analytics AS ua\n    WHERE ua.is_error\n      AND ua.transaction_date >= NOW() - INTERVAL '24 hours'\n    GROUP BY ua.clinic_id, ua.clinic_display_name\n),\nprevious_window AS (\n    SELECT\n        ua.clinic_id,\n        COUNT(*)::bigint AS incidents_prev_24h\n    FROM public.v_unified_analytics AS ua\n    WHERE ua.is_error\n      AND ua.transaction_date >= NOW() - INTERVAL '48 hours'\n      AND ua.transaction_date < NOW() - INTERVAL '24 hours'\n    GROUP BY ua.clinic_id\n)\nSELECT\n    cw.clinic_display_name AS \"Название клиники\",\n    cw.incidents_last_24h AS \"Инциденты за последние 24ч\",\n    COALESCE(pw.incidents_prev_24h, 0) AS \"Инциденты за предыдущие 24ч\",\n    cw.incidents_last_24h - COALESCE(pw.incidents_prev_24h, 0) AS \"Абсолютный рост инцидентов\",\n    CASE\n        WHEN COALESCE(pw.incidents_prev_24h, 0) = 0 THEN NULL\n        ELSE ROUND(\n            100.0 * (cw.incidents_last_24h - pw.incidents_prev_24h) / pw.incidents_prev_24h,\n            2\n        )\n    END AS \"Процент роста инцидентов\"\nFROM current_window AS cw\nLEFT JOIN previous_window AS pw\n    ON pw.clinic_id = cw.clinic_id\nORDER BY 4 DESC, cw.incidents_last_24h DESC, cw.clinic_display_name ASC\nLIMIT 20;"
         },
         "database": 1
       },
@@ -55,9 +58,9 @@
         "graph.dimensions": ["Название клиники"],
         "graph.metrics": ["Абсолютный рост инцидентов"]
       },
-      "sizeX": 12,
+      "sizeX": 24,
       "sizeY": 6,
-      "row": 12,
+      "row": 8,
       "col": 0
     }
   ],

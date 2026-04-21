@@ -1,5 +1,7 @@
 FROM metabase/metabase:latest
 
+RUN apk add --no-cache jq postgresql-client
+
 # Copy provisioning files
 COPY ../metabase-init/provision.sh /app/provision.sh
 COPY ../metabase_dashboards/ /app/metabase_dashboards/

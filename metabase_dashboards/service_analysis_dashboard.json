@@ -1,14 +1,15 @@
 {
   "name": "Анализ сервисов EGISZ",
-  "description": "Мониторинг сервисов и типов медицинских документов",
+  "description": "Мониторинг сервисов ЕГИСЗ и типов СЭМД: состояние сервисов, активность по юридическим лицам и производительность по типам документов.",
   "collection_id": null,
   "cards": [
     {
       "name": "Здоровье сервисов",
+      "description": "Сводная оценка сервисов по объёму обменов, ошибкам и проценту успешности за последние 7 дней.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT\n    ua.service_display_name AS 'Название сервиса',\n    COUNT(*)::bigint AS 'Общее количество',\n    COUNT(*) FILTER (WHERE ua.is_success)::bigint AS 'Успешные',\n    COUNT(*) FILTER (WHERE ua.is_error)::bigint AS 'Ошибки',\n    COALESCE(\n        ROUND(\n            100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0),\n            2\n        ),\n        0\n    ) AS 'Процент успешности',\n    MAX(ua.transaction_date) AS 'Последний обмен'\nFROM public.v_unified_analytics AS ua\nWHERE ua.transaction_date >= NOW() - INTERVAL '7 days'\nGROUP BY ua.service_display_name\nORDER BY error_count DESC, success_rate ASC, service_name ASC;"
+          "query": "SELECT\n    ua.service_display_name AS \"Название сервиса\",\n    COUNT(*)::bigint AS \"Общее количество\",\n    COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешные\",\n    COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\",\n    COALESCE(\n        ROUND(\n            100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0),\n            2\n        ),\n        0\n    ) AS \"Процент успешности\",\n    MAX(ua.transaction_date) AS \"Последний обмен\"\nFROM public.v_unified_analytics AS ua\nWHERE ua.transaction_date >= NOW() - INTERVAL '7 days'\nGROUP BY ua.service_display_name\nORDER BY 4 DESC, 5 ASC, 1 ASC;"
         },
         "database": 1
       },
@@ -18,16 +19,17 @@
         "graph.metrics": ["Процент успешности"]
       },
       "sizeX": 12,
-      "sizeY": 6,
+      "sizeY": 8,
       "row": 0,
       "col": 0
     },
     {
       "name": "Связки ЮЛ и типов СЭМД",
+      "description": "Таблица активности по юридическим лицам и типам документов. Помогает анализировать нагрузку и ошибки по бизнес-разрезу.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT\n    ua.jid AS 'JID (ЮЛ)',\n    ua.service_kind AS 'Тип СЭМД (KIND)',\n    COUNT(*)::bigint AS 'Количество транзакций',\n    COUNT(*) FILTER (WHERE ua.is_success)::bigint AS 'Успешные',\n    COUNT(*) FILTER (WHERE ua.is_error)::bigint AS 'Ошибки',\n    COALESCE(\n        ROUND(\n            100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0),\n            2\n        ),\n        0\n    ) AS 'Процент успешности'\nFROM public.v_unified_analytics AS ua\nWHERE ua.transaction_date >= NOW() - INTERVAL '30 days'\nGROUP BY ua.jid, ua.service_kind\nORDER BY ua.jid ASC, 'Количество транзакций' DESC;"
+          "query": "SELECT\n    ua.jid AS \"JID (ЮЛ)\",\n    ua.service_kind AS \"Код СЭМД\",\n    COALESCE(ua.service_kind_name, ua.service_display_name) AS \"Наименование типа документа\",\n    COUNT(*)::bigint AS \"Количество транзакций\",\n    COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешные\",\n    COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\",\n    COALESCE(\n        ROUND(\n            100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0),\n            2\n        ),\n        0\n    ) AS \"Процент успешности\"\nFROM public.v_unified_analytics AS ua\nWHERE ua.transaction_date >= NOW() - INTERVAL '30 days'\nGROUP BY ua.jid, ua.service_kind, COALESCE(ua.service_kind_name, ua.service_display_name)\nORDER BY ua.jid ASC, 4 DESC;"
         },
         "database": 1
       },
@@ -38,26 +40,27 @@
       },
       "sizeX": 12,
       "sizeY": 8,
-      "row": 6,
-      "col": 0
+      "row": 0,
+      "col": 12
     },
     {
       "name": "Производительность по типам СЭМД",
+      "description": "Сравнение типов СЭМД по объёму транзакций, успешности и ошибкам за последние 7 дней.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT\n    ua.service_kind AS 'Тип СЭМД',\n    ua.service_display_name AS 'Описание сервиса',\n    COUNT(*)::bigint AS 'Общее количество',\n    COUNT(*) FILTER (WHERE ua.is_success)::bigint AS 'Успешные',\n    COUNT(*) FILTER (WHERE ua.is_error)::bigint AS 'Ошибки',\n    AVG(EXTRACT(EPOCH FROM (NOW() - ua.transaction_date))/3600)::numeric(10,2) AS 'Средний возраст транзакции (часы)'\nFROM public.v_unified_analytics AS ua\nWHERE ua.transaction_date >= NOW() - INTERVAL '7 days'\nGROUP BY ua.service_kind, ua.service_display_name\nORDER BY 'Общее количество' DESC;"
+          "query": "SELECT\n    ua.service_kind AS \"Код СЭМД\",\n    COALESCE(ua.service_kind_name, ua.service_display_name) AS \"Наименование типа документа\",\n    COUNT(*)::bigint AS \"Общее количество\",\n    COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешные\",\n    COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\",\n    AVG(EXTRACT(EPOCH FROM (NOW() - ua.transaction_date))/3600)::numeric(10,2) AS \"Средний возраст транзакции (часы)\"\nFROM public.v_unified_analytics AS ua\nWHERE ua.transaction_date >= NOW() - INTERVAL '7 days'\nGROUP BY ua.service_kind, COALESCE(ua.service_kind_name, ua.service_display_name)\nORDER BY 3 DESC;"
         },
         "database": 1
       },
       "display": "bar",
       "visualization_settings": {
-        "graph.dimensions": ["Тип СЭМД"],
+        "graph.dimensions": ["Код СЭМД"],
         "graph.metrics": ["Общее количество", "Успешные", "Ошибки"]
       },
-      "sizeX": 12,
+      "sizeX": 24,
       "sizeY": 6,
-      "row": 14,
+      "row": 8,
       "col": 0
     }
   ],

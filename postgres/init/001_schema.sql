@@ -20,8 +20,8 @@ COMMENT ON TABLE dim_clinics IS 'Clinic dimension';
 
 CREATE TABLE dim_services (
     service_id SERIAL PRIMARY KEY,
-    kind BIGINT NOT NULL,
-    service_type BIGINT NOT NULL,
+    kind VARCHAR(255) NOT NULL,
+    service_type VARCHAR(64) NOT NULL,
     description VARCHAR(255),
     CONSTRAINT unq_service_kind UNIQUE (kind)
 );

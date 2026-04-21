@@ -76,8 +76,8 @@ export interface ClinicDimensionRecord {
 }
 
 export interface ServiceDimensionRecord {
-  kind: number;
-  serviceType: number;
+  kind: string;
+  serviceType: string;
   description: string | null;
 }
 

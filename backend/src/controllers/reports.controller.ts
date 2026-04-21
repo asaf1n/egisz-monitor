@@ -249,6 +249,20 @@ export class ReportsController {
     }
   };
 
+  getSystemHealth = async (_request: Request, response: Response): Promise<void> => {
+    try {
+      const health = await this.postgresService.getSystemHealth();
+      response.status(200).json(health);
+    } catch (error) {
+      response.status(503).json({
+        postgres: "error",
+        activeClinics: 0,
+        message: "Failed to load system health",
+        details: error instanceof Error ? error.message : "Unknown reporting error"
+      });
+    }
+  };
+
   private buildKpiQuery(): string {
     const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
 
@@ -290,12 +304,12 @@ export class ReportsController {
       WITH latest_activity AS (
         SELECT
           ua.mo_uid,
-          COALESCE(ua.service_description, ua.service_type::TEXT, ua.service_kind::TEXT) AS semd_type,
+          ua.service_kind AS semd_type,
           MAX(ua.transaction_date) AS last_activity_at
         FROM ${unifiedAnalytics} ua
         GROUP BY
           ua.mo_uid,
-          COALESCE(ua.service_description, ua.service_type::TEXT, ua.service_kind::TEXT)
+          ua.service_kind
       )
       SELECT
         ua.clinic_display_name,
@@ -313,7 +327,7 @@ export class ReportsController {
         SELECT DISTINCT
           ua.mo_uid,
           ua.clinic_display_name,
-          COALESCE(ua.service_description, ua.service_type::TEXT, ua.service_kind::TEXT) AS semd_type
+          ua.service_kind AS semd_type
         FROM ${unifiedAnalytics} ua
       ) ua
         ON ua.mo_uid = la.mo_uid
@@ -456,6 +470,7 @@ export function createReportsRouter(controller: ReportsController): Router {
   router.get("/service-health", controller.getServiceHealth);
   router.get("/costly-clinics", controller.getCostlyClinics);
   router.get("/vpn-node-status", controller.getVpnNodeStatus);
+  router.get("/system-health", controller.getSystemHealth);
   router.get("/etl-status", controller.getEtlStatus);
   router.post("/run-etl", controller.runEtl);
 
