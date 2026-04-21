@@ -1,44 +1,55 @@
+# Dependencies
 node_modules
 npm-debug.log
 npm-error.log
 yarn-error.log
-pnpm-error.log
 
+# Version control
 .git
 .gitignore
 .gitattributes
 
+# Build outputs (do not include source dist in context)
 dist
 build
+.vite
+
+# Environment variables
 .env
 .env.local
 .env.*.local
+.env.production.local
 
+# IDE/Editor
 .vscode
 .idea
 .DS_Store
 *.swp
 *.swo
 
+# Documentation
 *.md
 README*
 CHANGELOG*
 LICENSE
 
+# Test artifacts
 coverage
 .nyc_output
 test
 __tests__
-jest.config.js
-.mocharc.json
-tsconfig.tsbuildinfo
+vitest.config.ts
+cypress
+e2e
 
+# CI/CD
 .github
 .gitlab-ci.yml
 .circleci
 Jenkinsfile
 
+# Temporary
 *.tmp
-*.log
+*.temp
 .cache
 tmp

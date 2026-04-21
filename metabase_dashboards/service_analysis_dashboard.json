@@ -1,0 +1,73 @@
+{
+  "name": "Анализ сервисов EGISZ",
+  "description": "Мониторинг сервисов и типов медицинских документов",
+  "collection_id": null,
+  "cards": [
+    {
+      "name": "Здоровье сервисов",
+      "dataset_query": {
+        "type": "native",
+        "native": {
+          "query": "SELECT\n    ua.service_display_name AS 'Название сервиса',\n    COUNT(*)::bigint AS 'Общее количество',\n    COUNT(*) FILTER (WHERE ua.is_success)::bigint AS 'Успешные',\n    COUNT(*) FILTER (WHERE ua.is_error)::bigint AS 'Ошибки',\n    COALESCE(\n        ROUND(\n            100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0),\n            2\n        ),\n        0\n    ) AS 'Процент успешности',\n    MAX(ua.transaction_date) AS 'Последний обмен'\nFROM public.v_unified_analytics AS ua\nWHERE ua.transaction_date >= NOW() - INTERVAL '7 days'\nGROUP BY ua.service_display_name\nORDER BY error_count DESC, success_rate ASC, service_name ASC;"
+        },
+        "database": 1
+      },
+      "display": "bar",
+      "visualization_settings": {
+        "graph.dimensions": ["Название сервиса"],
+        "graph.metrics": ["Процент успешности"]
+      },
+      "sizeX": 12,
+      "sizeY": 6,
+      "row": 0,
+      "col": 0
+    },
+    {
+      "name": "Связки ЮЛ и типов СЭМД",
+      "dataset_query": {
+        "type": "native",
+        "native": {
+          "query": "SELECT\n    ua.jid AS 'JID (ЮЛ)',\n    ua.service_kind AS 'Тип СЭМД (KIND)',\n    COUNT(*)::bigint AS 'Количество транзакций',\n    COUNT(*) FILTER (WHERE ua.is_success)::bigint AS 'Успешные',\n    COUNT(*) FILTER (WHERE ua.is_error)::bigint AS 'Ошибки',\n    COALESCE(\n        ROUND(\n            100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0),\n            2\n        ),\n        0\n    ) AS 'Процент успешности'\nFROM public.v_unified_analytics AS ua\nWHERE ua.transaction_date >= NOW() - INTERVAL '30 days'\nGROUP BY ua.jid, ua.service_kind\nORDER BY ua.jid ASC, 'Количество транзакций' DESC;"
+        },
+        "database": 1
+      },
+      "display": "table",
+      "visualization_settings": {
+        "table.pivot_column": "JID (ЮЛ)",
+        "table.cell_column": "Количество транзакций"
+      },
+      "sizeX": 12,
+      "sizeY": 8,
+      "row": 6,
+      "col": 0
+    },
+    {
+      "name": "Производительность по типам СЭМД",
+      "dataset_query": {
+        "type": "native",
+        "native": {
+          "query": "SELECT\n    ua.service_kind AS 'Тип СЭМД',\n    ua.service_display_name AS 'Описание сервиса',\n    COUNT(*)::bigint AS 'Общее количество',\n    COUNT(*) FILTER (WHERE ua.is_success)::bigint AS 'Успешные',\n    COUNT(*) FILTER (WHERE ua.is_error)::bigint AS 'Ошибки',\n    AVG(EXTRACT(EPOCH FROM (NOW() - ua.transaction_date))/3600)::numeric(10,2) AS 'Средний возраст транзакции (часы)'\nFROM public.v_unified_analytics AS ua\nWHERE ua.transaction_date >= NOW() - INTERVAL '7 days'\nGROUP BY ua.service_kind, ua.service_display_name\nORDER BY 'Общее количество' DESC;"
+        },
+        "database": 1
+      },
+      "display": "bar",
+      "visualization_settings": {
+        "graph.dimensions": ["Тип СЭМД"],
+        "graph.metrics": ["Общее количество", "Успешные", "Ошибки"]
+      },
+      "sizeX": 12,
+      "sizeY": 6,
+      "row": 14,
+      "col": 0
+    }
+  ],
+  "parameters": [
+    {
+      "name": "Период анализа",
+      "slug": "period",
+      "id": "period_param",
+      "type": "date/range",
+      "default": ["7 days ago", "today"]
+    }
+  ]
+}

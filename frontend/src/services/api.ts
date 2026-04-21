@@ -1,7 +1,8 @@
 import {
   ApiMutationResult,
-  ClinicErrorRow,
   ClinicDirectoryIssue,
+  ClinicErrorRow,
+  CostlyClinicRow,
   DashboardKPI,
   ErrorPieData,
   EtlRunStatus,
@@ -9,7 +10,8 @@ import {
   FirebirdConfigView,
   HourlyTrendRow,
   ServiceHealthRow,
-  StatusHeatmapRow
+  StatusHeatmapRow,
+  VpnNodeRow
 } from "../types";
 
 async function getJson<T>(url: string): Promise<T> {
@@ -104,6 +106,14 @@ export async function fetchClinicErrors(): Promise<ClinicErrorRow[]> {
 
 export async function fetchServiceHealth(): Promise<ServiceHealthRow[]> {
   return getJson<ServiceHealthRow[]>("/api/reports/service-health");
+}
+
+export async function fetchCostlyClinics(): Promise<CostlyClinicRow[]> {
+  return getJson<CostlyClinicRow[]>("/api/reports/costly-clinics");
+}
+
+export async function fetchVpnNodeStatus(): Promise<VpnNodeRow[]> {
+  return getJson<VpnNodeRow[]>("/api/reports/vpn-node-status");
 }
 
 export async function runEtlSync(): Promise<EtlRunStatus> {

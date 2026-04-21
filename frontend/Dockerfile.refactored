@@ -1,18 +1,19 @@
 # ============================================================================
 # egisz-monitor-frontend Dockerfile v1.1.0
-# Security: Non-root nginx user
-# Optimization: Multi-stage build, minimal image (~25MB), layer caching
+# Security: Non-root nginx user, read-only filesystem where possible
+# Optimization: Layer caching, minimal runtime image
 # ============================================================================
 
+# Build arguments for versioning and metadata
 ARG VERSION=dev
 ARG BUILD_DATE=unknown
 ARG COMMIT_SHA=unknown
-ARG NODE_VERSION=18.19.0
+ARG NODE_BASE_IMAGE=node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
 # ============================================================================
 # Stage 1: Dependency resolver
 # Purpose: Isolate npm install for Docker cache efficiency
-FROM node:${NODE_VERSION}-alpine AS deps
+FROM ${NODE_BASE_IMAGE} AS deps
 
 WORKDIR /app
 
@@ -25,7 +26,7 @@ RUN npm ci --audit=false
 # ============================================================================
 # Stage 2: Builder
 # Purpose: Compile TypeScript, build Vite assets
-FROM node:${NODE_VERSION}-alpine AS builder
+FROM ${NODE_BASE_IMAGE} AS builder
 
 ARG VERSION
 ARG BUILD_DATE
@@ -34,7 +35,7 @@ ARG COMMIT_SHA
 WORKDIR /app
 
 # Copy config files (cache key #2: static configs)
-# Order: config files before package.json for better caching
+# Order matters: static files before package.json for better caching
 COPY tsconfig.json vite.config.ts tailwind.config.js postcss.config.js ./
 
 # Copy pre-installed node_modules from deps stage
@@ -49,13 +50,13 @@ COPY index.html ./
 # Output directory: dist/
 RUN npm run build
 
-# Verify build output
+# Optional: Verify build output
 RUN test -d dist && ls -la dist/ || (echo "Build failed"; exit 1)
 
 # ============================================================================
 # Stage 3: Runtime (Nginx)
 # Purpose: Serve static assets, minimal footprint, security hardening
-FROM nginx:1.27-alpine
+FROM nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
 
 ARG VERSION
 ARG BUILD_DATE
@@ -71,6 +72,7 @@ LABEL version="${VERSION}" \
 RUN rm /etc/nginx/conf.d/default.conf
 
 # Copy custom nginx configuration
+# Ensure non-root user context in nginx.conf (user nobody; or use --user flag)
 COPY nginx.conf /etc/nginx/conf.d/
 
 # Copy compiled static assets from builder
@@ -81,13 +83,12 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 RUN mkdir -p /var/cache/nginx/client_temp && \
     chown -R nginx:nginx /var/cache/nginx && \
     chown -R nginx:nginx /var/run && \
-    chown -R nginx:nginx /usr/share/nginx/html && \
-    chown -R nginx:nginx /etc/nginx
+    chown -R nginx:nginx /usr/share/nginx/html
 
-# Store version metadata
+# Store version metadata in nginx config placeholder
 RUN echo "# Version: ${VERSION} | Build Date: ${BUILD_DATE} | Commit: ${COMMIT_SHA}" > /usr/share/nginx/html/.build-info
 
-# Healthcheck
+# Healthcheck with explicit localhost IP
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:80 || exit 1
 
@@ -99,6 +100,6 @@ ENV VERSION=${VERSION} \
     BUILD_DATE=${BUILD_DATE} \
     COMMIT_SHA=${COMMIT_SHA}
 
-# Start nginx in foreground
+# Start nginx in foreground (required for containerized environments)
 ENTRYPOINT ["nginx"]
 CMD ["-g", "daemon off;"]

@@ -1,19 +1,17 @@
 # ============================================================================
 # egisz-monitor-backend Dockerfile v1.1.0
-# Security: Non-root user (node:1000)
+# Security: Non-root user (node)
 # Optimization: Layer caching, dependency separation, ARG versioning
-# Image: node:18-alpine with digest pinning
 # ============================================================================
 
+# Build arguments for versioning and metadata
 ARG VERSION=dev
 ARG BUILD_DATE=unknown
 ARG COMMIT_SHA=unknown
-ARG NODE_VERSION=18.19.0
 
-# ============================================================================
 # Stage 1: Dependency resolver
 # Purpose: Separate dependency installation for Docker cache reuse
-FROM node:${NODE_VERSION}-alpine AS deps
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS deps
 
 WORKDIR /app
 
@@ -26,7 +24,7 @@ RUN npm ci --audit=false
 # ============================================================================
 # Stage 2: Builder
 # Purpose: Compile TypeScript, include devDependencies
-FROM node:${NODE_VERSION}-alpine AS builder
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
 
 ARG VERSION
 ARG BUILD_DATE
@@ -47,13 +45,13 @@ COPY src ./src
 # Compile TypeScript to JavaScript
 RUN npm run build
 
-# Type check (optional but recommended)
+# Type check (optional but recommended for CI/CD)
 RUN npm run type-check || true
 
 # ============================================================================
 # Stage 3: Runtime (Production)
 # Purpose: Minimal production image with only production dependencies and compiled code
-FROM node:${NODE_VERSION}-alpine
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
 ARG VERSION
 ARG BUILD_DATE
@@ -67,14 +65,14 @@ LABEL version="${VERSION}" \
 
 WORKDIR /app
 
-# Create non-root user (security hardening) - skip if already exists
-RUN addgroup -g 1000 -S node 2>/dev/null || true && \
-    adduser -u 1000 -S node -G node 2>/dev/null || true
+# Create non-root user (security hardening)
+RUN addgroup -g 1000 -S node && \
+    adduser -u 1000 -S node -G node
 
 # Copy package files for production
 COPY package*.json ./
 
-# Install ONLY production dependencies
+# Install ONLY production dependencies (cache key #3)
 # Using --omit=dev instead of deprecated --only=production
 RUN npm ci --omit=dev --audit=false && \
     npm cache clean --force
@@ -88,12 +86,12 @@ RUN chown -R node:node /app
 # Set working user (non-root)
 USER node
 
-# Expose port
-EXPOSE 3000
-
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+
+# Expose port
+EXPOSE 3000
 
 # Runtime metadata in environment
 ENV NODE_ENV=production \

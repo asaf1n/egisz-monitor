@@ -1,7 +1,15 @@
+version: '3.9'
+
+# ============================================================================
+# EGISZ-Monitor Production Docker Compose (v1.1.0)
+# Pre-built images, ready for deployment
+# ============================================================================
+
 services:
   db:
     image: postgres:15-alpine
     container_name: egisz-monitor-db
+    hostname: db
     environment:
       POSTGRES_DB: ${DB_NAME:-egisz_monitor}
       POSTGRES_USER: ${DB_USER:-egisz}
@@ -11,7 +19,7 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./postgres/init:/docker-entrypoint-initdb.d
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-egisz} -d ${DB_NAME:-egisz_monitor}"]
       interval: 10s
@@ -21,12 +29,16 @@ services:
     restart: unless-stopped
     networks:
       - app-network
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      app: egisz-monitor
+      service: database
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ${REGISTRY:-localhost:5000}/egisz-backend:${BACKEND_VERSION:-1.1.0}
     container_name: egisz-monitor-backend
+    hostname: backend
     env_file:
       - ./backend/.env.example
     environment:
@@ -60,12 +72,17 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      app: egisz-monitor
+      service: backend
+      version: ${BACKEND_VERSION:-1.1.0}
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: ${REGISTRY:-localhost:5000}/egisz-frontend:${FRONTEND_VERSION:-1.1.0}
     container_name: egisz-monitor-frontend
+    hostname: frontend
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost/api}
     env_file:
@@ -78,19 +95,34 @@ services:
     restart: unless-stopped
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      app: egisz-monitor
+      service: frontend
+      version: ${FRONTEND_VERSION:-1.1.0}
 
   metabase:
-    build:
-      context: .
-      dockerfile: metabase/Dockerfile
+    image: metabase/metabase:v0.48.0
     container_name: egisz-monitor-metabase
+    hostname: metabase
     environment:
       MB_DB_TYPE: postgres
-      MB_DB_DBNAME: ${MB_DB_NAME:-metabase}
+      MB_DB_DBNAME: metabaseappdb
       MB_DB_PORT: 5432
-      MB_DB_USER: ${MB_DB_USER:-metabase}
-      MB_DB_PASS: ${MB_DB_PASS:-metabase}
+      MB_DB_USER: metabase
+      MB_DB_PASS: metabase
       MB_DB_HOST: db
+      # Skip setup wizard and go directly to dashboards
+      MB_SETUP_TOKEN: disabled
+      MB_ADMIN_EMAIL: admin@egisz.local
+      MB_ADMIN_PASSWORD: admin123
     depends_on:
       db:
         condition: service_healthy
@@ -105,6 +137,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      app: egisz-monitor
+      service: metabase
 
 volumes:
   pgdata:

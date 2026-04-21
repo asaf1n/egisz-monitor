@@ -1,85 +1,169 @@
+#!/usr/bin/env powershell
+# ============================================================================
+# EGISZ-Monitor Build & Deployment Script (v1.1.0)
+# Windows PowerShell
+# ============================================================================
+
 param(
-  [switch]$NoBuild
+    [string]$Version = "1.1.0",
+    [string]$Service = "all",
+    [string]$Action = "build",
+    [string]$Registry = "localhost:5000"
 )
 
 $ErrorActionPreference = "Stop"
 
-function Get-ServicePort {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$ContainerName,
-    [Parameter(Mandatory = $true)]
-    [string]$ContainerPort
-  )
+$BuildDate = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+$CommitSha = (git rev-parse --short HEAD 2>$null) -or "unknown"
 
-  $mapping = docker port $ContainerName $ContainerPort 2>$null
-
-  if (-not $mapping) {
-    return $null
-  }
-
-  $firstLine = ($mapping | Select-Object -First 1).Trim()
-  $parts = $firstLine -split ":"
-
-  if ($parts.Length -eq 0) {
-    return $null
-  }
-
-  return $parts[$parts.Length - 1]
-}
-
-function Wait-ForHealthyContainer {
-  param(
-    [Parameter(Mandatory = $true)]
-    [string]$ContainerName,
-    [int]$TimeoutSeconds = 120
-  )
-
-  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-
-  while ((Get-Date) -lt $deadline) {
-    $state = docker inspect $ContainerName --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}" 2>$null
-
-    if (-not $state) {
-      Start-Sleep -Seconds 2
-      continue
-    }
-
-    $normalized = $state.Trim().ToLowerInvariant()
-
-    if ($normalized -eq "healthy" -or $normalized -eq "running") {
-      return
-    }
-
-    if ($normalized -eq "unhealthy" -or $normalized -eq "exited" -or $normalized -eq "dead") {
-      throw "Container '$ContainerName' did not start successfully. Current state: $normalized"
-    }
-
-    Start-Sleep -Seconds 2
-  }
-
-  throw "Timed out waiting for container '$ContainerName' to become healthy."
-}
-
-$composeArgs = @("compose", "up", "-d")
-
-if (-not $NoBuild) {
-  $composeArgs += "--build"
-}
-
-Write-Host "Starting EGISZ Monitor containers..." -ForegroundColor Cyan
-& docker @composeArgs
-
-Wait-ForHealthyContainer -ContainerName "egisz-monitor-db"
-Wait-ForHealthyContainer -ContainerName "egisz-monitor-backend"
-Wait-ForHealthyContainer -ContainerName "egisz-monitor-frontend"
-
-$frontendPort = Get-ServicePort -ContainerName "egisz-monitor-frontend" -ContainerPort "80/tcp"
-$backendPort = Get-ServicePort -ContainerName "egisz-monitor-backend" -ContainerPort "3000/tcp"
-$dbPort = Get-ServicePort -ContainerName "egisz-monitor-db" -ContainerPort "5432/tcp"
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "EGISZ-Monitor Build v$Version" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "Service: $Service"
+Write-Host "Registry: $Registry"
+Write-Host "Build Date: $BuildDate"
+Write-Host "Commit: $CommitSha"
 Write-Host ""
-Write-Host "EGISZ Monitor started successfully." -ForegroundColor Green
-Write-Host "Frontend: http://localhost:$frontendPort"
-Write-Host "Backend:  http://localhost:$backendPort"
-Write-Host "API:      http://localhost:$backendPort/health"
-Write-Host "Postgres: localhost:$dbPort"
+
+function Build-Backend {
+    Write-Host "[1/2] Building backend v$Version..." -ForegroundColor Yellow
+    
+    docker build `
+        --progress=plain `
+        --build-arg VERSION="$Version" `
+        --build-arg BUILD_DATE="$BuildDate" `
+        --build-arg COMMIT_SHA="$CommitSha" `
+        -t "$Registry/egisz-backend:$Version" `
+        -t "$Registry/egisz-backend:$Version-$BuildDate" `
+        -t "$Registry/egisz-backend:sha-$CommitSha" `
+        -t "$Registry/egisz-backend:latest" `
+        -f backend/Dockerfile `
+        backend/
+    
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "✓ Backend image built successfully" -ForegroundColor Green
+    } else {
+        Write-Host "✗ Backend build failed" -ForegroundColor Red
+        exit 1
+    }
+}
+
+function Build-Frontend {
+    Write-Host "[2/2] Building frontend v$Version..." -ForegroundColor Yellow
+    
+    docker build `
+        --progress=plain `
+        --build-arg VERSION="$Version" `
+        --build-arg BUILD_DATE="$BuildDate" `
+        --build-arg COMMIT_SHA="$CommitSha" `
+        -t "$Registry/egisz-frontend:$Version" `
+        -t "$Registry/egisz-frontend:$Version-$BuildDate" `
+        -t "$Registry/egisz-frontend:sha-$CommitSha" `
+        -t "$Registry/egisz-frontend:latest" `
+        -f frontend/Dockerfile `
+        frontend/
+    
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "✓ Frontend image built successfully" -ForegroundColor Green
+    } else {
+        Write-Host "✗ Frontend build failed" -ForegroundColor Red
+        exit 1
+    }
+}
+
+function Test-Security {
+    Write-Host "`n[Security] Checking non-root users..." -ForegroundColor Cyan
+    
+    Write-Host "Backend user:" -NoNewline
+    $BackendUser = docker run --rm "$Registry/egisz-backend:$Version" whoami
+    if ($BackendUser -eq "node") {
+        Write-Host " ✓ $BackendUser" -ForegroundColor Green
+    } else {
+        Write-Host " ✗ $BackendUser (expected: node)" -ForegroundColor Red
+        exit 1
+    }
+    
+    Write-Host "Frontend user:" -NoNewline
+    $FrontendUser = docker run --rm "$Registry/egisz-frontend:$Version" whoami
+    if ($FrontendUser -eq "nginx") {
+        Write-Host " ✓ $FrontendUser" -ForegroundColor Green
+    } else {
+        Write-Host " ✗ $FrontendUser (expected: nginx)" -ForegroundColor Red
+        exit 1
+    }
+}
+
+function Get-ImageSize {
+    Write-Host "`n[Size] Image information:" -ForegroundColor Cyan
+    docker image ls --filter "reference=$Registry/egisz-*:$Version" --format "table {{.Repository}}:{{.Tag}}`t{{.Size}}"
+}
+
+function Deploy-Dev {
+    Write-Host "`n[Deploy] Starting development stack..." -ForegroundColor Cyan
+    $env:BACKEND_VERSION = $Version
+    $env:FRONTEND_VERSION = $Version
+    $env:BUILD_DATE = $BuildDate
+    $env:COMMIT_SHA = $CommitSha
+    
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+    
+    Write-Host "✓ Stack started" -ForegroundColor Green
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml ps
+}
+
+function Deploy-Prod {
+    Write-Host "`n[Deploy] Starting production stack..." -ForegroundColor Cyan
+    $env:REGISTRY = $Registry
+    $env:BACKEND_VERSION = $Version
+    $env:FRONTEND_VERSION = $Version
+    
+    docker compose -f docker-compose.prod.yml up -d
+    
+    Write-Host "✓ Stack deployed" -ForegroundColor Green
+    docker compose -f docker-compose.prod.yml ps
+}
+
+function Show-Help {
+    Write-Host @"
+EGISZ-Monitor Build Script v1.1.0
+
+Usage: .\start.ps1 -Version 1.1.0 -Service all -Action build
+
+Parameters:
+  -Version <string>        Version tag (default: 1.1.0)
+  -Service <all|backend|frontend> (default: all)
+  -Action <build|deploy|test> (default: build)
+  -Registry <string>       Docker registry (default: localhost:5000)
+
+Examples:
+  .\start.ps1 -Version 1.1.0 -Service all -Action build
+  .\start.ps1 -Service backend -Action deploy
+  .\start.ps1 -Action test
+
+"@
+}
+
+# Main execution
+if ($Action -eq "build") {
+    if ($Service -eq "all" -or $Service -eq "backend") {
+        Build-Backend
+    }
+    if ($Service -eq "all" -or $Service -eq "frontend") {
+        Build-Frontend
+    }
+    Test-Security
+    Get-ImageSize
+} elseif ($Action -eq "deploy") {
+    Deploy-Dev
+} elseif ($Action -eq "test") {
+    Test-Security
+    Get-ImageSize
+} elseif ($Action -eq "prod") {
+    Deploy-Prod
+} else {
+    Show-Help
+}
+
+Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "✓ Complete" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Cyan

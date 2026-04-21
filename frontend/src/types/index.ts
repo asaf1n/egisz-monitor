@@ -41,6 +41,27 @@ export interface ServiceHealthRow {
   lastExchangeAt: string | null;
 }
 
+export interface CostlyClinicRow {
+  clinicName: string | null;
+  moUid: string;
+  clinicDisplayName: string;
+  errorCount: number;
+  totalErrorCost: number;
+  avgErrorCost: number;
+  errorRatePct: number;
+  supportPriority: "high" | "medium" | "low";
+}
+
+export interface VpnNodeRow {
+  hostname: string;
+  totalRequests: number;
+  successfulRequests: number;
+  failedRequests: number;
+  successRatePct: number;
+  stabilityStatus: "critical" | "warning" | "stable";
+  performanceStatus: "slow" | "normal" | "fast";
+}
+
 export interface FirebirdConfigFormData {
   host: string;
   port: number;

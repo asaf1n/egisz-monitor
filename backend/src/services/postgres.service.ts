@@ -141,6 +141,19 @@ export class PostgresService {
         ADD COLUMN IF NOT EXISTS hostname VARCHAR(256)
       `);
 
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS ${this.schemaName}.dim_error_costs (
+          error_cost_id SERIAL PRIMARY KEY,
+          error_category VARCHAR(50) NOT NULL UNIQUE,
+          error_subcategory VARCHAR(50),
+          base_cost_per_error DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+          escalation_multiplier DECIMAL(3,2) NOT NULL DEFAULT 1.00,
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
       await this.migrateClinicDirectory(client);
       await this.normalizeErrorCategories(client);
       await this.backfillEgiszErrorClinicIds(client);
@@ -191,6 +204,41 @@ export class PostgresService {
       `,
       [FIREBIRD_CONFIG_KEY, JSON.stringify(storedConfig)]
     );
+  }
+
+  async initializeDefaultErrorCosts(): Promise<void> {
+    await this.ensureSchema();
+
+    const defaultCosts = [
+      { error_category: 'network', error_subcategory: null, base_cost_per_error: 50.00, escalation_multiplier: 1.00 },
+      { error_category: 'async', error_subcategory: null, base_cost_per_error: 25.00, escalation_multiplier: 1.00 },
+      { error_category: 'other', error_subcategory: 'auth', base_cost_per_error: 100.00, escalation_multiplier: 2.00 },
+      { error_category: 'other', error_subcategory: 'timeout', base_cost_per_error: 75.00, escalation_multiplier: 1.50 },
+      { error_category: 'other', error_subcategory: 'connection_refused', base_cost_per_error: 60.00, escalation_multiplier: 1.20 },
+      { error_category: 'other', error_subcategory: 'proxy', base_cost_per_error: 40.00, escalation_multiplier: 1.00 },
+      { error_category: 'other', error_subcategory: 'egisz', base_cost_per_error: 80.00, escalation_multiplier: 1.80 },
+      { error_category: 'other', error_subcategory: 'validation', base_cost_per_error: 30.00, escalation_multiplier: 1.00 },
+      { error_category: 'other', error_subcategory: 'unknown', base_cost_per_error: 45.00, escalation_multiplier: 1.10 }
+    ];
+
+    for (const cost of defaultCosts) {
+      await this.pool.query(
+        `
+          INSERT INTO ${this.schemaName}.dim_error_costs (
+            error_category, error_subcategory, base_cost_per_error, escalation_multiplier, is_active
+          )
+          VALUES ($1, $2, $3, $4, TRUE)
+          ON CONFLICT (error_category) DO UPDATE SET
+            error_subcategory = EXCLUDED.error_subcategory,
+            base_cost_per_error = EXCLUDED.base_cost_per_error,
+            escalation_multiplier = EXCLUDED.escalation_multiplier,
+            updated_at = NOW()
+          WHERE ${this.schemaName}.dim_error_costs.error_subcategory IS NULL
+             OR ${this.schemaName}.dim_error_costs.error_subcategory = EXCLUDED.error_subcategory
+        `,
+        [cost.error_category, cost.error_subcategory, cost.base_cost_per_error, cost.escalation_multiplier]
+      );
+    }
   }
 
   async getFirebirdConfig(): Promise<FirebirdConnectionConfig | null> {
@@ -317,8 +365,9 @@ export class PostgresService {
   }
 
   getQualifiedTableName(
-    tableName: "app_config" | "dim_clinics" | "dim_services" | "fact_transactions" | "egisz_errors" |
-    "view_daily_summary" | "view_error_analysis" | "view_clinic_sla" | "v_unified_analytics"
+    tableName: "app_config" | "dim_clinics" | "dim_services" | "fact_transactions" | "egisz_errors" | "dim_error_costs" |
+    "view_daily_summary" | "view_error_analysis" | "view_clinic_sla" | "v_unified_analytics" | 
+    "v_support_economic_metrics" | "v_vpn_node_stability"
   ): string {
     return `${this.schemaName}.${tableName}`;
   }
@@ -768,6 +817,8 @@ export class PostgresService {
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_service_hourly_health`);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_clinic_hourly_sla`);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_error_fingerprints`);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_support_economic_metrics`);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_vpn_node_stability`);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_unified_analytics`);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_clinic_sla`);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_error_analysis`);
@@ -893,7 +944,13 @@ export class PostgresService {
           )
         ) AS error_fingerprint,
         ee.hostname,
-        (ee.error_id IS NOT NULL) AS has_egisz_error_record
+        (ee.error_id IS NOT NULL) AS has_egisz_error_record,
+        COALESCE(dec.base_cost_per_error, 0.00) AS error_base_cost,
+        COALESCE(dec.escalation_multiplier, 1.00) AS error_escalation_multiplier,
+        CASE
+          WHEN ft.status = 'error' THEN COALESCE(dec.base_cost_per_error * dec.escalation_multiplier, 0.00)
+          ELSE 0.00
+        END AS error_cost
       FROM ${this.schemaName}.fact_transactions AS ft
       JOIN ${this.schemaName}.dim_clinics AS dc
         ON dc.clinic_id = ft.clinic_id
@@ -901,6 +958,41 @@ export class PostgresService {
         ON ds.service_id = ft.service_id
       LEFT JOIN ${this.schemaName}.egisz_errors AS ee
         ON ee.original_log_id = ft.original_log_id
+      LEFT JOIN ${this.schemaName}.dim_error_costs AS dec
+        ON dec.error_category = COALESCE(
+          CASE
+            WHEN ft.status <> 'error' THEN NULL
+            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'auth|authentication|авторизац|логин|парол|token|401|403'
+              THEN 'other'
+            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'timeout|timed out|таймаут'
+              THEN 'other'
+            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'connection refused|connect failed|could not connect|соединени'
+              THEN 'other'
+            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'proxy'
+              THEN 'other'
+            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'egisz|егисз'
+              THEN 'other'
+            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'validation|invalid|некоррект|ошибка формата'
+              THEN 'other'
+            ELSE ft.error_category
+          END,
+          'other'
+        ) AND dec.error_subcategory = CASE
+          WHEN ft.status <> 'error' THEN NULL
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'auth|authentication|авторизац|логин|парол|token|401|403'
+            THEN 'auth'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'timeout|timed out|таймаут'
+            THEN 'timeout'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'connection refused|connect failed|could not connect|соединени'
+            THEN 'connection_refused'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'proxy'
+            THEN 'proxy'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'egisz|егисз'
+            THEN 'egisz'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'validation|invalid|некоррект|ошибка формата'
+            THEN 'validation'
+          ELSE 'unknown'
+        END
     `);
     await client.query(`
       CREATE OR REPLACE VIEW ${this.schemaName}.v_error_fingerprints AS
@@ -970,6 +1062,78 @@ export class PostgresService {
         ua.service_kind,
         ua.service_type,
         ua.service_display_name
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE VIEW ${this.schemaName}.v_support_economic_metrics AS
+      SELECT
+        ua.date_day,
+        ua.clinic_id,
+        ua.jid,
+        ua.jname,
+        ua.clinic_display_name,
+        ua.mo_uid,
+        ua.mo_domen,
+        COUNT(*) AS total_requests,
+        COUNT(*) FILTER (WHERE ua.is_error) AS error_count,
+        SUM(ua.error_cost) AS total_error_cost,
+        ROUND(AVG(ua.error_cost) FILTER (WHERE ua.is_error), 2) AS avg_error_cost,
+        ROUND(
+          100.0 * COUNT(*) FILTER (WHERE ua.is_error) / NULLIF(COUNT(*), 0),
+          2
+        ) AS error_rate_pct,
+        MAX(ua.transaction_date) AS last_transaction_at,
+        CASE
+          WHEN COUNT(*) FILTER (WHERE ua.is_error) > 10 THEN 'high'
+          WHEN COUNT(*) FILTER (WHERE ua.is_error) > 5 THEN 'medium'
+          ELSE 'low'
+        END AS support_priority
+      FROM ${this.schemaName}.v_unified_analytics AS ua
+      WHERE ua.transaction_date >= CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY
+        ua.date_day,
+        ua.clinic_id,
+        ua.jid,
+        ua.jname,
+        ua.clinic_display_name,
+        ua.mo_uid,
+        ua.mo_domen
+    `);
+
+    await client.query(`
+      CREATE OR REPLACE VIEW ${this.schemaName}.v_vpn_node_stability AS
+      WITH hourly_stats AS (
+        SELECT
+          ua.hostname,
+          date_trunc('hour', ua.transaction_date) AS date_hour,
+          COUNT(*) AS total_requests,
+          COUNT(*) FILTER (WHERE ua.is_success) AS successful_requests,
+          COUNT(*) FILTER (WHERE ua.is_error) AS failed_requests,
+          ROUND(
+            100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0),
+            2
+          ) AS success_rate_pct
+        FROM ${this.schemaName}.v_unified_analytics AS ua
+        WHERE ua.hostname IS NOT NULL
+          AND ua.transaction_date >= CURRENT_TIMESTAMP - INTERVAL '24 hours'
+        GROUP BY ua.hostname, date_trunc('hour', ua.transaction_date)
+      )
+      SELECT
+        hostname,
+        date_hour,
+        total_requests,
+        successful_requests,
+        failed_requests,
+        success_rate_pct,
+        0 AS avg_response_time_seconds,
+        CASE
+          WHEN success_rate_pct < 90 THEN 'critical'
+          WHEN success_rate_pct < 95 THEN 'warning'
+          ELSE 'stable'
+        END AS stability_status,
+        'normal' AS performance_status
+      FROM hourly_stats
+      ORDER BY hostname, date_hour DESC
     `);
   }
 

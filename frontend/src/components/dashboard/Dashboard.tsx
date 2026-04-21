@@ -17,22 +17,26 @@ import {
 
 import {
   fetchClinicErrors,
+  fetchCostlyClinics,
   fetchDashboardKpi,
   fetchErrorsPie,
   fetchEtlStatus,
   fetchHourlyTrend,
   fetchServiceHealth,
   fetchStatusHeatmap,
+  fetchVpnNodeStatus,
   runEtlSync
 } from "../../services/api";
 import {
   ClinicErrorRow,
+  CostlyClinicRow,
   DashboardKPI,
   ErrorPieData,
   EtlRunStatus,
   HourlyTrendRow,
   ServiceHealthRow,
-  StatusHeatmapRow
+  StatusHeatmapRow,
+  VpnNodeRow
 } from "../../types";
 
 const PIE_COLORS = ["#36543b", "#b25f3f", "#d89d56", "#8a4b2f", "#6e8f5a"];
@@ -146,6 +150,8 @@ export function Dashboard(): JSX.Element {
   const [hourlyTrend, setHourlyTrend] = useState<HourlyTrendRow[]>([]);
   const [clinicErrors, setClinicErrors] = useState<ClinicErrorRow[]>([]);
   const [serviceHealth, setServiceHealth] = useState<ServiceHealthRow[]>([]);
+  const [costlyClinics, setCostlyClinics] = useState<CostlyClinicRow[]>([]);
+  const [vpnNodes, setVpnNodes] = useState<VpnNodeRow[]>([]);
   const [etlStatus, setEtlStatus] = useState<EtlRunStatus>(EMPTY_ETL_STATUS);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -160,13 +166,15 @@ export function Dashboard(): JSX.Element {
     setError(null);
 
     try {
-      const [kpiData, pieData, heatmapData, trendData, clinicData, serviceData, etlData] = await Promise.all([
+      const [kpiData, pieData, heatmapData, trendData, clinicData, serviceData, costlyClinicData, vpnNodeData, etlData] = await Promise.all([
         fetchDashboardKpi(),
         fetchErrorsPie(),
         fetchStatusHeatmap(),
         fetchHourlyTrend(),
         fetchClinicErrors(),
         fetchServiceHealth(),
+        fetchCostlyClinics(),
+        fetchVpnNodeStatus(),
         fetchEtlStatus()
       ]);
 
@@ -176,6 +184,8 @@ export function Dashboard(): JSX.Element {
       setHourlyTrend(trendData);
       setClinicErrors(clinicData);
       setServiceHealth(serviceData);
+      setCostlyClinics(costlyClinicData);
+      setVpnNodes(vpnNodeData);
       setEtlStatus(etlData);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить данные дашборда");
@@ -416,6 +426,100 @@ export function Dashboard(): JSX.Element {
                   ) : (
                     <div className="rounded-2xl border border-dashed border-ink/12 bg-white/60 p-6 text-center text-ink/55">
                       Нет данных по сервисам
+                    </div>
+                  )}
+                </ChartCard>
+              </section>
+
+              <section className="mt-8 grid gap-6 xl:grid-cols-2">
+                <ChartCard eyebrow="Экономика поддержки" title="Топ клиник по затратам на обработку ошибок">
+                  {costlyClinics.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full border-separate border-spacing-y-3">
+                        <thead>
+                          <tr className="text-left text-sm text-ink/45">
+                            <th className="px-4 py-2">Клиника</th>
+                            <th className="px-4 py-2">Затраты (руб)</th>
+                            <th className="px-4 py-2">Ошибок</th>
+                            <th className="px-4 py-2">Приоритет</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {costlyClinics.map((row) => (
+                            <tr key={row.moUid} className="bg-white text-sm text-ink">
+                              <td className="rounded-l-2xl px-4 py-4 font-medium">{row.clinicName ?? row.clinicDisplayName}</td>
+                              <td className="px-4 py-4 font-semibold text-amber-700">{row.totalErrorCost.toFixed(2)}</td>
+                              <td className="px-4 py-4 text-rose-700">{row.errorCount.toLocaleString("ru-RU")}</td>
+                              <td className="rounded-r-2xl px-4 py-4">
+                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                  row.supportPriority === "high"
+                                    ? "bg-rose-100 text-rose-700"
+                                    : row.supportPriority === "medium"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-emerald-100 text-emerald-700"
+                                }`}>
+                                  {row.supportPriority === "high" ? "Высокий" : row.supportPriority === "medium" ? "Средний" : "Низкий"}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-ink/12 bg-white/60 p-6 text-center text-ink/55">
+                      Нет данных по затратам на обработку ошибок
+                    </div>
+                  )}
+                </ChartCard>
+
+                <ChartCard eyebrow="Стабильность инфраструктуры" title="Статус VPN узлов за 24 часа">
+                  {vpnNodes.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full border-separate border-spacing-y-3">
+                        <thead>
+                          <tr className="text-left text-sm text-ink/45">
+                            <th className="px-4 py-2">Узел</th>
+                            <th className="px-4 py-2">Успешность</th>
+                            <th className="px-4 py-2">Статус</th>
+                            <th className="px-4 py-2">Производительность</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {vpnNodes.map((row) => (
+                            <tr key={row.hostname} className="bg-white text-sm text-ink">
+                              <td className="rounded-l-2xl px-4 py-4 font-medium">{row.hostname}</td>
+                              <td className="px-4 py-4">{row.successRatePct.toFixed(2)}%</td>
+                              <td className="px-4 py-4">
+                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                  row.stabilityStatus === "critical"
+                                    ? "bg-rose-100 text-rose-700"
+                                    : row.stabilityStatus === "warning"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-emerald-100 text-emerald-700"
+                                }`}>
+                                  {row.stabilityStatus === "critical" ? "Критичный" : row.stabilityStatus === "warning" ? "Внимание" : "Стабилен"}
+                                </span>
+                              </td>
+                              <td className="rounded-r-2xl px-4 py-4">
+                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                  row.performanceStatus === "slow"
+                                    ? "bg-amber-100 text-amber-700"
+                                    : row.performanceStatus === "normal"
+                                      ? "bg-blue-100 text-blue-700"
+                                      : "bg-emerald-100 text-emerald-700"
+                                }`}>
+                                  {row.performanceStatus === "slow" ? "Медленно" : row.performanceStatus === "normal" ? "Нормально" : "Быстро"}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-ink/12 bg-white/60 p-6 text-center text-ink/55">
+                      Нет данных по VPN узлам
                     </div>
                   )}
                 </ChartCard>

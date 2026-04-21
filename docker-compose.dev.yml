@@ -1,0 +1,25 @@
+version: '3.9'
+
+# Development overrides with inline build
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${BACKEND_VERSION:-1.1.0}
+        BUILD_DATE: ${BUILD_DATE:-dev}
+        COMMIT_SHA: ${COMMIT_SHA:-dev}
+    image: egisz-backend:${BACKEND_VERSION:-1.1.0}
+    environment:
+      LOG_LEVEL: debug
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${FRONTEND_VERSION:-1.1.0}
+        BUILD_DATE: ${BUILD_DATE:-dev}
+        COMMIT_SHA: ${COMMIT_SHA:-dev}
+    image: egisz-frontend:${FRONTEND_VERSION:-1.1.0}
