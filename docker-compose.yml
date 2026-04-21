@@ -79,6 +79,31 @@ services:
     networks:
       - app-network
 
+  metabase:
+    image: metabase/metabase:latest
+    container_name: egisz-monitor-metabase
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: ${MB_DB_NAME:-metabase}
+      MB_DB_PORT: 5432
+      MB_DB_USER: ${MB_DB_USER:-metabase}
+      MB_DB_PASS: ${MB_DB_PASS:-metabase}
+      MB_DB_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${METABASE_PORT:-3001}:3000"
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 volumes:
   pgdata:
     driver: local
