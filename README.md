@@ -31,6 +31,20 @@ MVP-платформа для проактивного мониторинга и
 
 Если Docker и Firebird работают на одном Windows-хосте:
 
+# DB Config localhost:8812
 - в настройках подключения используйте `host.docker.internal` вместо `localhost`
 - откройте порт `3050` в Windows Firewall
-- путь к Firebird-базе лучше указывать абсолютный, например `D:\Bases\egisz.fdb`
+
+# Metabase localhost:3001
+- Connection string: оставить пустым
+- Display name: `reports_db`
+- Host: `db`
+- Port: `5432`
+- Database name: `egisz_monitor`
+- Username: `egisz`
+- Password: `egisz`
+- Schemas: `public` или `All`
+- SSL: `off`
+- SSH tunnel: `off`
+
+Важно: поле `Connection string` лучше вообще очистить, чтобы Metabase не подставлял значения криво.
