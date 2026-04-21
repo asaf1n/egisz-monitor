@@ -38,7 +38,7 @@ DB_PASSWORD=egisz
 
 MB_DB_HOST=db
 MB_DB_PORT=5432
-MB_DB_NAME=metabaseappdb
+MB_DB_NAME=metabase
 MB_DB_USER=metabase
 MB_DB_PASS=metabase
 ```
@@ -136,7 +136,7 @@ port: 5432
 ```text
 user: metabase
 password: metabase
-database: metabaseappdb
+database: metabase
 port: 5432
 ```
 
