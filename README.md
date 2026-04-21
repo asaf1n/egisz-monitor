@@ -1,105 +1,348 @@
 # egisz-monitor
 
-Локальная платформа мониторинга интеграции МИС с сервисами ЕГИСЗ/РЭМД. Backend загружает журналы обмена из Firebird, нормализует их в PostgreSQL и формирует единый аналитический слой для dashboard и Metabase.
+Локальная система мониторинга обмена с ЕГИСЗ. Приложение загружает журналы обмена из Firebird, нормализует данные в PostgreSQL, строит единый аналитический слой для dashboard и Metabase и поддерживает runtime-миграции схемы.
 
-## Состав
+## Что входит в проект
 
-- Backend на `Node.js` / `TypeScript` с ETL и runtime-миграциями PostgreSQL
-- PostgreSQL 15 с таблицами `dim_clinics`, `dim_services`, `fact_transactions`, `egisz_errors`
-- Frontend на `React` / `Vite`
-- Metabase для ad-hoc аналитики и продуктовых отчётов
+- `backend` — Node.js / TypeScript API, ETL и runtime-миграции PostgreSQL
+- `frontend` — React / Vite интерфейс dashboard и настроек
+- `db` — PostgreSQL 15
+- `metabase` — BI-интерфейс для ad-hoc аналитики и отчётов
 
-## Локальный запуск
+## Быстрый старт
 
-1. Скопируйте [`.env.example`](/C:/Users/artem/egisz-monitor/.env.example) в `.env`.
-2. Для локальной работы используйте стандартные значения:
-   - `DB_USER=egisz`
-   - `DB_PASSWORD=egisz`
-   - `MB_DB_USER=metabase`
-   - `MB_DB_PASS=metabase`
-3. Запустите `docker compose up -d --build` или `./start.ps1`.
+### 1. Требования
 
-Важно для существующего `pgdata`:
+Нужно установить:
 
-- переменные окружения не переопределяют уже созданных пользователей PostgreSQL;
-- если volume был инициализирован с другими учётными данными, `backend` и `metabase` будут получать `password authentication failed`;
-- в локальной среде проще либо вернуть прежние логин/пароль в `.env`, либо пересоздать volume `pgdata`.
+- Docker Desktop
+- Docker Compose
+- Node.js 20+ и npm
 
-## Единый аналитический слой
+### 2. Настройка окружения
 
-Основная витрина: `public.v_unified_analytics`.
+Создайте `.env` в корне проекта:
 
-Она объединяет:
+```powershell
+Copy-Item .env.example .env
+```
 
-- факты обмена из `fact_transactions`;
-- нормализованные ошибки из `egisz_errors`;
-- атрибуты клиники из `dim_clinics`, включая `jname`, `mo_domen`, `is_verified`;
-- атрибуты сервисов из `dim_services`;
-- русифицированную категорию ошибки `error_category_ru`;
-- вычисляемое отображаемое имя клиники через `COALESCE(c.jname, e.hostname)`.
+Минимальные значения для локального старта:
 
-Это базовый источник данных и для backend dashboard, и для Metabase. Отдельная BI-логика поверх сырых таблиц не требуется.
+```env
+DB_HOST=db
+DB_PORT=5432
+DB_NAME=egisz_monitor
+DB_USER=egisz
+DB_PASSWORD=egisz
 
-## Нормализация справочника клиник
+MB_DB_HOST=db
+MB_DB_PORT=5432
+MB_DB_NAME=metabaseappdb
+MB_DB_USER=metabase
+MB_DB_PASS=metabase
+```
 
-Backend использует единое canonical hostname normalization:
+### 3. Данные Firebird для начала работы
 
-- все hostname приводятся к нижнему регистру;
-- `http://`, `https://`, завершающие `/` и стандартные порты удаляются;
-- и в ETL, и в `dim_clinics.mo_domen` используется один и тот же канонический формат.
+В проекте уже предусмотрены локальные стартовые значения. Они подходят для типового запуска в Docker на Windows, если Firebird доступен с хоста:
 
-Если при ETL hostname найден в логе, но отсутствует в справочнике клиник, backend создаёт временную запись:
+```text
+host: host.docker.internal
+port: 3050
+alias: proxy_egisz
+user: sysdba
+password: masterkey
+```
 
-- `jname = 'Неизвестная клиника (<hostname>)'`
+Эти значения:
+
+- автоматически подставляются как дефолтные;
+- доступны на странице `Настройки`;
+- могут быть изменены и сохранены через интерфейс.
+
+### 4. Запуск
+
+Запустите проект:
+
+```powershell
+docker compose up -d --build
+```
+
+После запуска сервисы будут доступны:
+
+- Dashboard: `http://localhost:8812`
+- Backend health: `http://localhost:3000/health`
+- Metabase: `http://localhost:3001`
+- PostgreSQL: `localhost:5432`
+
+## Первый вход и рабочий сценарий
+
+### 1. Проверка Firebird
+
+Откройте `http://localhost:8812/settings`.
+
+Проверьте:
+
+- `host`
+- `port`
+- `alias`
+- `user`
+- `password`
+
+Дальше:
+
+1. Нажмите `Проверить соединение`
+2. Если соединение успешно, нажмите `Сохранить`
+
+### 2. Первый ETL
+
+Откройте `http://localhost:8812/`.
+
+Нажмите `Синхронизировать данные`.
+
+ETL выполняется в фоне. В верхней строке статуса отображаются:
+
+- текущее состояние ETL;
+- этап выполнения;
+- краткое текстовое сообщение;
+- время запуска.
+
+Этапы ETL:
+
+- `extracting` — чтение журналов из Firebird
+- `parsing` — разбор и нормализация строк
+- `loading` — запись в PostgreSQL
+- `completed` — завершено
+- `failed` — ошибка
+
+## Локальные учётные данные
+
+### PostgreSQL
+
+Для локальной работы по умолчанию используются:
+
+```text
+user: egisz
+password: egisz
+database: egisz_monitor
+port: 5432
+```
+
+### Внутренняя база Metabase
+
+Для внутренней базы Metabase по умолчанию используются:
+
+```text
+user: metabase
+password: metabase
+database: metabaseappdb
+port: 5432
+```
+
+## Что делать, если `pgdata` уже существует
+
+Если volume PostgreSQL был создан раньше, новые значения из `.env` не переопределят уже существующих пользователей.
+
+Типовые симптомы:
+
+- `password authentication failed for user "egisz"`
+- `password authentication failed for user "metabase"`
+
+Варианты решения:
+
+1. Вернуть прежние логин и пароль, с которыми изначально создавался volume
+2. Пересоздать volume полностью:
+
+```powershell
+docker compose down -v
+docker compose up -d --build
+```
+
+## Архитектура данных
+
+### Основные таблицы
+
+- `dim_clinics`
+- `dim_services`
+- `fact_transactions`
+- `egisz_errors`
+- `app_config`
+
+### Основная аналитическая витрина
+
+Основной semantic layer:
+
+```text
+public.v_unified_analytics
+```
+
+Именно он используется:
+
+- backend-дашбордом;
+- Metabase;
+- витринами SLA и error analytics.
+
+Это сделано для исключения расхождения логики между приложением и BI.
+
+## Нормализация клиник
+
+### Canonical hostname
+
+Все hostname нормализуются к единому виду:
+
+- перевод в нижний регистр;
+- удаление `http://` и `https://`;
+- удаление завершающих `/`;
+- удаление стандартных портов;
+- хранение в каноническом виде в `dim_clinics.mo_domen`.
+
+### Ghost clinics
+
+Если hostname найден в логах, но отсутствует в справочнике клиник, система создаёт временную запись:
+
+- `jname = Неизвестная клиника (<hostname>)`
 - `is_verified = false`
 
-Это позволяет сохранить FK-связи, не терять ошибки и затем выполнить ручное сопоставление.
+Это позволяет:
 
-Экран настроек (`/settings`) показывает список неверифицированных клиник, требующих сопоставления.
+- не ронять FK-связи;
+- не терять ошибки и транзакции;
+- потом сопоставить такую клинику вручную.
 
-## ETL и UX статуса
+## Работа с неверифицированными клиниками
 
-Запуск ETL теперь работает в фоновом режиме:
+Страница `Настройки` показывает список клиник, у которых:
 
-- `POST /api/reports/run-etl` сразу возвращает статус запуска;
-- `GET /api/reports/etl-status` отдаёт текущее состояние;
-- dashboard показывает строку состояния ETL с кратким текстом и текущим этапом:
-  - `extracting`
-  - `parsing`
-  - `loading`
-  - `completed`
-  - `failed`
+- `is_verified = false`
 
-Это устраняет 504 на длинных синхронизациях и даёт оператору понятный прогресс.
+Для массового ручного сопоставления используется скрипт:
 
-## SLA и Metabase
+- [postgres/scripts/map_unknown_clinics.sql](/C:/Users/artem/egisz-monitor/postgres/scripts/map_unknown_clinics.sql)
 
-Для расчёта SLA используется формула:
+Сценарий:
+
+1. Найти временные hostname
+2. Подставить соответствующие `jid` и названия клиник
+3. Выполнить SQL-скрипт
+4. Перезапустить ETL при необходимости
+
+## SLA и аналитика
+
+Расчёт SLA:
 
 ```text
 SLA = count(success_requests) / count(total_requests) * 100
 ```
 
-Витрина `v_clinic_hourly_sla` рассчитывает SLA только по валидным транзакциям из `v_unified_analytics`.
+Для SLA используются витрины:
 
-Готовые SQL-запросы для Metabase находятся в:
+- `v_clinic_hourly_sla`
+- `v_service_hourly_health`
+
+Дополнительные витрины:
+
+- `v_error_fingerprints`
+- `view_daily_summary`
+- `view_error_analysis`
+- `view_clinic_sla`
+
+## Metabase
+
+Metabase доступен по адресу:
+
+```text
+http://localhost:3001
+```
+
+Рекомендуется строить вопросы и дашборды на основе:
+
+- `public.v_unified_analytics`
+
+Готовые SQL-запросы:
 
 - [postgres/metabase/001_operational_metrics.sql](/C:/Users/artem/egisz-monitor/postgres/metabase/001_operational_metrics.sql)
 - [postgres/metabase/002_semantic_layer_metrics.sql](/C:/Users/artem/egisz-monitor/postgres/metabase/002_semantic_layer_metrics.sql)
 
-Для ручного массового сопоставления ghost clinics с верифицированными записями используйте:
+## Полезные API endpoints
 
-- [postgres/scripts/map_unknown_clinics.sql](/C:/Users/artem/egisz-monitor/postgres/scripts/map_unknown_clinics.sql)
+### Health и диагностика
 
-## Диагностика PostgreSQL
+- `GET /health`
+- `GET /api/database/check`
+- `GET /api/config/firebird`
+- `GET /api/config/clinic-directory-issues`
 
-Backend отдельно распознаёт ошибки авторизации PostgreSQL и возвращает подсказки в:
+### Настройки Firebird
 
-- `/api/database/check`
-- `/api/config/firebird`
+- `POST /api/config/test-firebird`
+- `POST /api/config/save-firebird`
 
-Типовые причины:
+### ETL и отчёты
 
-- неверный пароль пользователя `egisz` для существующего `pgdata`;
-- неверный пароль пользователя `metabase` для внутренней базы Metabase;
-- старт на старом volume, где инициализационные SQL-скрипты больше не выполняются повторно.
+- `POST /api/reports/run-etl`
+- `GET /api/reports/etl-status`
+- `GET /api/reports/kpi`
+- `GET /api/reports/errors-pie`
+- `GET /api/reports/hourly-trend`
+- `GET /api/reports/clinic-errors`
+- `GET /api/reports/service-health`
+- `GET /api/reports/status-heatmap`
+
+## Полезные команды
+
+### Пересобрать и поднять проект
+
+```powershell
+docker compose up -d --build
+```
+
+### Остановить проект
+
+```powershell
+docker compose down
+```
+
+### Остановить с удалением volume
+
+```powershell
+docker compose down -v
+```
+
+### Посмотреть логи backend
+
+```powershell
+docker compose logs backend --tail=200
+```
+
+### Посмотреть логи frontend
+
+```powershell
+docker compose logs frontend --tail=200
+```
+
+### Посмотреть логи Metabase
+
+```powershell
+docker compose logs metabase --tail=200
+```
+
+## Проверка после запуска
+
+Минимальная проверка:
+
+1. Открыть `http://localhost:8812/settings`
+2. Проверить соединение с Firebird
+3. Сохранить настройки
+4. Открыть `http://localhost:8812/`
+5. Запустить синхронизацию
+6. Убедиться, что строка статуса ETL меняет этапы
+7. Проверить dashboard
+8. При необходимости открыть `http://localhost:3001`
+
+## Примечания
+
+- Все изменения схемы PostgreSQL выполняются через `ensureSchema()` в backend
+- Логика аналитических view принадлежит backend, а не init-скриптам
+- Для существующего `pgdata` миграции применяются при старте backend
+- Если в отчётах видны технические hostname, нужно завершить ручной маппинг ghost clinics
