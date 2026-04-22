@@ -1,65 +1,96 @@
-EGISZ Monitor: Система управления и BI-аналитики интеграций
-Промышленное решение для мониторинга прокси-сервисов ЕГИСЗ, анализа стабильности ГОСТ VPN и оценки операционной эффективности техподдержки. Система преобразует сырые логи Firebird в структурированную бизнес-аналитику и финансовые метрики.
+# EGISZ Monitor
 
-🛠 Технологический стек
-Backend: Node.js, TypeScript, Fastify (высокопроизводительный API).
-Frontend: React, Tailwind CSS, Vite (интерактивная панель управления).
-Database: PostgreSQL 15 (аналитическое хранилище), Firebird (источник первичных логов).
-BI-слой: Metabase (семантический слой, визуализация, P&L отчетность).
-Инфраструктура: Docker, Nginx (публичный прокси), PowerShell (автоматизация).
-AI-Layer: Google Gemini API (анализ инцидентов и саммаризация).
+Система мониторинга и BI-аналитики интеграций ЕГИСЗ. Проект извлекает данные из Firebird, сохраняет их в PostgreSQL, строит аналитику и визуализацию через Metabase.
 
-🤖 ИИ-Агенты проекта
-Проект разработан и поддерживается тремя специализированными агентами:
-Gemini: Интеллектуальная интерпретация кодов ошибок, расчет «отпечатков», формирование текстовых резюме по инцидентам.
-Docker Gordon: Оркестрация, безопасность (non-root), настройка портов, автоматический provisioning Metabase.
-Codex/Cursor: ETL-логика, SQL-витрины (Semantic Layer), интерактивность интерфейса.
+## Технологический стек
+- Backend: Node.js, TypeScript, Express, tsx
+- Frontend: React, Vite, Tailwind CSS
+- Database: PostgreSQL 15 (аналитическое хранилище), Firebird (источник логов)
+- BI: Metabase
+- Инфраструктура: Docker, Docker Compose, Nginx-прокси, PowerShell
 
-🚀 Быстрый старт
-Настройте файл .env на основе .env.example.
-Запустите развертывание одной командой:
-PowerShell
-.\start.ps1 -Action deploy
+## Что реализовано
+- ETL из Firebird в PostgreSQL с загрузкой фактов и нормализацией клиник
+- Web API: `/health`, `/api/config/*`, `/api/reports/*`
+- React-панель управления для мониторинга и конфигурации
+- Metabase и публичный Metabase-прокси для доступа к дашбордам
+- Инициализация PostgreSQL через `postgres/init`
 
+## Быстрый старт
+1. Скопируйте root `.env.example` в `.env` и настройте параметры окружения.
+2. Запустите стек разработки:
+   ```powershell
+   .\start.ps1 -Action deploy
+   ```
+3. Для продакшн-стека используйте:
+   ```powershell
+   .\start.ps1 -Action prod
+   ```
 
-Доступы и Авторизация
+> В режиме разработки используется `docker-compose.yml` вместе с `docker-compose.dev.yml`.
 
-Ресурс
-URL
-Доступ
-Панель управления
-http://localhost:8812
-Без пароля (управление синхронизацией)
-Metabase (Admin UI)
-http://localhost:3001
-L: admin@egisz-monitor.local / P: ChangeMeNow123!
-Публичный монитор
-http://localhost:3002
-Без пароля (только просмотр дашбордов)
+## Доступы
+- Панель управления frontend: http://localhost:8812
+- Metabase Admin UI: http://localhost:3001
+- Публичный Metabase: http://localhost:3002
+- Backend healthcheck: http://localhost:3000/health
 
-🔍 Логика парсинга и обработки данных
-Система использует многоуровневый алгоритм обработки сообщений:
-Идентификация Clinic JID: ETL-процесс сканирует тексты ошибок на наличие паттерна gost-<jid>.infoclinica.lan. При обнаружении JID транзакция автоматически связывается с записью в справочнике МО, даже если hostname ранее не был определен.
-Типизация (Fingerprinting): С помощью регулярных выражений из текста ошибки удаляются переменные части (динамические URL клиник, ID запросов, порты). Это создает уникальный «отпечаток» ошибки, позволяя группировать тысячи сообщений в единый инцидент.
-Traceability: Поле Original LOGID в PostgreSQL всегда соответствует EXCHANGELOG.LOGID в Firebird, обеспечивая сквозную навигацию между аналитикой и первичным логом.
-Фильтрация шума: Технический трафик (например, группа ghost-log-group-9901) автоматически исключается из бизнес-отчетов на уровне SQL-view.
+### Metabase
+- Email: `admin@egisz-monitor.local`
+- Password: `ChangeMeNow123!`
 
-📂 Структура данных (Schema)
-Аналитическая база данных построена по схеме «звезда»:
-Основные таблицы:
-dim_clinics: Справочник МО (JID, Название, Хост, Статус верификации).
-fact_transactions: Факты обращений к сервисам (Success/Error).
-egisz_errors: Детализированные логи ошибок с рассчитанными error_fingerprint.
-dim_error_costs: Экономическая модель (стоимость исправления по категориям).
-Семантический слой (Views):
-v_unified_analytics: Главная витрина данных с корректной кодировкой UTF-8 и JID-именами клиник.
-v_support_economic_metrics: Расчет финансовых потерь и эффективности техподдержки.
-v_vpn_node_stability: Мониторинг надежности узлов ГОСТ VPN.
+## Конфигурация
+Основные значения по умолчанию заданы в `.env.example`:
+- PostgreSQL: `DB_NAME=egisz_monitor`, `DB_USER=egisz`, `DB_PASSWORD=egisz`, `DB_PORT=5432`
+- Firebird: `FIREBIRD_HOST=host.docker.internal`, `FIREBIRD_PORT=3050`, `FIREBIRD_ALIAS=proxy_egisz`, `FIREBIRD_USER=sysdba`, `FIREBIRD_PASSWORD=masterkey`, `FIREBIRD_PAGE_SIZE=4096`
+- Backend: `BACKEND_PORT=3000`
+- Frontend: `FRONTEND_PORT=8812`, `VITE_API_BASE_URL=http://localhost/api`
+- Metabase: `METABASE_PORT=3001`, `METABASE_PUBLIC_PORT=3002`
 
-📊 Преднастроенные дашборды
-В Metabase автоматически разворачивается коллекция "ЕГИСЗ: Мониторинг интеграции":
-Статистика за последние 24ч: Оперативный срез по KPI, общему SLA и объему транзакций.
-Аналитика ошибок: Распределение инцидентов по категориям (auth, network, timeout) и тепловая карта сбоев.
-Клинический анализ: Рейтинг надежности МО на основе Clinic JID и объем затрат на их сопровождение.
-Сервисный анализ: Мониторинг времени ответа (latency) и стабильности VPN-каналов.
-Система разработана для автоматизации контроля качества передачи данных в медицинских информационных системах.
+## Компоненты
+- `db` — PostgreSQL 15 container с инициализацией из `postgres/init`
+- `backend` — Express API и ETL-сервис, который загружает данные из Firebird и наполняет PostgreSQL
+- `frontend` — React/Vite приложение панели управления
+- `metabase` — Metabase BI-сервер с подключением к PostgreSQL
+- `metabase-public` — nginx-прокси публичного Metabase-дashboards
+
+## API
+Backend предоставляет:
+- `GET /health`
+- `GET /api/database/check`
+- `GET /api/config/firebird`
+- `GET /api/config/clinic-directory-issues`
+- `POST /api/config/test-firebird`
+- `POST /api/config/save-firebird`
+- `GET /api/reports/*` и `POST /api/reports/run-etl`
+
+## Структура данных
+Аналитическая модель определяется в `postgres/init/001_schema.sql`:
+- `dim_clinics` — справочник клиник и MO
+- `dim_services` — справочник сервисов
+- `fact_transactions` — факты обращений, успешные и ошибочные транзакции
+- `egisz_errors` — нормализованные ошибки с привязкой к клинике
+- `app_config` — runtime-конфигурация приложения
+
+## Сборка и запуск без PowerShell
+```powershell
+cd c:\Users\artem\egisz-monitor
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+Для production-стека:
+```powershell
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+## Полезные команды
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs -f backend`
+- `docker compose logs -f frontend`
+- `docker compose logs -f metabase`
+
+## Примечания
+- Публичный Metabase доступен без аутентификации через `metabase-public`.
+- Backend внутри контейнера использует `host.docker.internal` для доступа к внешнему Firebird.
+- `frontend` ожидает API на порту `3000` по умолчанию через `VITE_API_BASE_URL`.
