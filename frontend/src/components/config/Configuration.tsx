@@ -2,11 +2,13 @@ import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 
 import {
   fetchClinicDirectoryIssues,
+  fetchEtlStatus,
   fetchFirebirdConnection,
+  runEtlSync,
   saveFirebirdConnection,
   testFirebirdConnection
 } from "../../services/api";
-import { ClinicDirectoryIssue, FirebirdConfigFormData } from "../../types";
+import { ClinicDirectoryIssue, EtlRunStatus, FirebirdConfigFormData } from "../../types";
 
 const DEFAULT_PLACEHOLDERS = {
   host: "host.docker.internal",
@@ -24,6 +26,16 @@ const INITIAL_FORM: FirebirdConfigFormData = {
   pass: ""
 };
 
+const EMPTY_ETL_STATUS: EtlRunStatus = {
+  status: "idle",
+  stage: "idle",
+  message: "Синхронизация еще не запускалась",
+  startedAt: null,
+  finishedAt: null,
+  result: null,
+  error: null
+};
+
 type AlertState =
   | {
       tone: "success" | "error";
@@ -39,6 +51,65 @@ function FieldHint({ children }: { children: string }): JSX.Element {
   return <p className="mt-2 text-xs text-ink/45">{children}</p>;
 }
 
+function formatDate(value: string | null): string {
+  if (!value) {
+    return "Нет данных";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function getSyncStageMeta(status: EtlRunStatus): { label: string; className: string } {
+  if (status.status === "failed") {
+    return {
+      label: "Ошибка",
+      className: "text-rose-700"
+    };
+  }
+
+  if (status.status === "success") {
+    return {
+      label: "Данные обновлены",
+      className: "text-emerald-700"
+    };
+  }
+
+  switch (status.stage) {
+    case "extracting":
+      return {
+        label: "Синхронизация ЮЛ",
+        className: "text-sky-700"
+      };
+    case "parsing":
+      return {
+        label: "Синхронизация и парсинг СЭМД",
+        className: "text-sky-700"
+      };
+    case "loading":
+      return {
+        label: "Загрузка данных в хранилище",
+        className: "text-sky-700"
+      };
+    default:
+      return {
+        label: "Ожидание запуска синхронизации",
+        className: "text-ink/70"
+      };
+  }
+}
+
 export default function Configuration(): JSX.Element {
   const [form, setForm] = useState<FirebirdConfigFormData>(INITIAL_FORM);
   const [alert, setAlert] = useState<AlertState>(null);
@@ -47,6 +118,7 @@ export default function Configuration(): JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [usesDefaultConfig, setUsesDefaultConfig] = useState(false);
   const [directoryIssues, setDirectoryIssues] = useState<ClinicDirectoryIssue[]>([]);
+  const [etlStatus, setEtlStatus] = useState<EtlRunStatus>(EMPTY_ETL_STATUS);
 
   useEffect(() => {
     let isMounted = true;
@@ -56,7 +128,11 @@ export default function Configuration(): JSX.Element {
       setAlert(null);
 
       try {
-        const [config, issues] = await Promise.all([fetchFirebirdConnection(), fetchClinicDirectoryIssues()]);
+        const [config, issues, status] = await Promise.all([
+          fetchFirebirdConnection(),
+          fetchClinicDirectoryIssues(),
+          fetchEtlStatus()
+        ]);
 
         if (!isMounted) {
           return;
@@ -71,6 +147,7 @@ export default function Configuration(): JSX.Element {
         });
         setUsesDefaultConfig(config.isDefault);
         setDirectoryIssues(issues);
+        setEtlStatus(status);
       } catch (error) {
         if (!isMounted) {
           return;
@@ -94,6 +171,45 @@ export default function Configuration(): JSX.Element {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (etlStatus.status !== "running") {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void fetchEtlStatus()
+        .then((status) => {
+          setEtlStatus(status);
+
+          if (status.status === "success") {
+            setAlert({
+              tone: "success",
+              message: status.result
+                ? `Данные обновлены. Загружено ${status.result.inserted} записей из ${status.result.extracted}.`
+                : "Данные обновлены"
+            });
+          }
+
+          if (status.status === "failed") {
+            setAlert({
+              tone: "error",
+              message: status.error ?? "Синхронизация завершилась с ошибкой"
+            });
+          }
+        })
+        .catch((error) => {
+          setAlert({
+            tone: "error",
+            message: error instanceof Error ? error.message : "Не удалось получить статус синхронизации"
+          });
+        });
+    }, 3000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [etlStatus.status]);
 
   const handleChange =
     (field: keyof FirebirdConfigFormData) =>
@@ -149,18 +265,69 @@ export default function Configuration(): JSX.Element {
     }
   };
 
+  const handleSync = async (): Promise<void> => {
+    setAlert(null);
+
+    try {
+      const status = await runEtlSync();
+      setEtlStatus(status);
+    } catch (error) {
+      setAlert({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Не удалось запустить синхронизацию"
+      });
+    }
+  };
+
+  const syncStage = getSyncStageMeta(etlStatus);
+  const isSyncing = etlStatus.status === "running";
+
   return (
     <main className="min-h-screen bg-canvas text-ink">
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
         <section className="rounded-[28px] border border-ink/8 bg-white p-6 shadow-card sm:p-8">
           <div className="max-w-2xl">
-            <p className="text-sm uppercase tracking-[0.22em] text-ink/40">Firebird</p>
+            <p className="text-sm uppercase tracking-[0.22em] text-ink/40">Пульт управления</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
-              Параметры подключения
+              Настройка подключения и синхронизации
             </h1>
             <p className="mt-3 text-sm leading-6 text-ink/65 sm:text-base">
-              Укажите адрес сервера, порт, алиас или путь к базе, затем проверьте соединение и сохраните рабочую конфигурацию.
+              Здесь можно проверить Firebird, сохранить рабочую конфигурацию и запустить полную синхронизацию
+              данных в аналитическое хранилище.
             </p>
+          </div>
+
+          <div className="mt-6 rounded-3xl border border-ink/8 bg-canvas/45 p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-2xl">
+                <p className="text-sm font-medium text-ink">Статус синхронизации</p>
+                <p className={`mt-3 text-sm font-semibold ${syncStage.className}`}>{syncStage.label}</p>
+                <p className="mt-3 text-sm text-ink/65">{etlStatus.message}</p>
+                <div className="mt-3 flex flex-col gap-1 text-xs text-ink/55 sm:flex-row sm:gap-4">
+                  <span>Запуск: {formatDate(etlStatus.startedAt)}</span>
+                  <span>Завершение: {formatDate(etlStatus.finishedAt)}</span>
+                </div>
+              </div>
+
+              <div className="flex flex-col items-start gap-3">
+                <button
+                  className="inline-flex items-center justify-center rounded-full bg-moss px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#2f4833] disabled:cursor-not-allowed disabled:opacity-60"
+                  type="button"
+                  onClick={() => void handleSync()}
+                  disabled={isLoading || isTesting || isSaving || isSyncing}
+                >
+                  {isSyncing ? "Синхронизация..." : "Обновить данные"}
+                </button>
+                <a
+                  href="http://localhost:3001"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center rounded-full border border-ink/10 bg-white px-6 py-3 text-sm font-semibold text-ink transition hover:bg-canvas/65"
+                >
+                  Metabase
+                </a>
+              </div>
+            </div>
           </div>
 
           <div className="mt-6 grid gap-3 rounded-2xl border border-ink/8 bg-canvas/55 p-4 text-sm text-ink/65 sm:grid-cols-3">
@@ -283,7 +450,7 @@ export default function Configuration(): JSX.Element {
                 <button
                   className="inline-flex items-center justify-center rounded-full bg-moss px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#2f4833] disabled:cursor-not-allowed disabled:opacity-60"
                   type="submit"
-                  disabled={isTesting || isSaving}
+                  disabled={isTesting || isSaving || isSyncing}
                 >
                   {isTesting ? "Проверка..." : "Проверить соединение"}
                 </button>
@@ -292,7 +459,7 @@ export default function Configuration(): JSX.Element {
                   className="inline-flex items-center justify-center rounded-full border border-ink/10 bg-white px-6 py-3 text-sm font-semibold text-ink transition hover:bg-canvas/65 disabled:cursor-not-allowed disabled:opacity-60"
                   type="button"
                   onClick={() => void handleSave()}
-                  disabled={isTesting || isSaving}
+                  disabled={isTesting || isSaving || isSyncing}
                 >
                   {isSaving ? "Сохранение..." : "Сохранить"}
                 </button>

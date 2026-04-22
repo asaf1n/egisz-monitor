@@ -24,7 +24,7 @@ export interface StatusHeatmapRow {
 }
 
 export interface ClinicErrorRow {
-  clinicName: string | null;
+  clinicName: string;
   moUid: string;
   totalCount: number;
   errorCount: number;
@@ -96,8 +96,8 @@ export interface EtlRunResult {
 }
 
 export interface EtlRunStatus {
-  status: "idle" | "running" | "completed" | "failed";
-  stage: "idle" | "extracting" | "parsing" | "loading" | "completed" | "failed";
+  status: "idle" | "running" | "success" | "failed";
+  stage: "idle" | "extracting" | "parsing" | "loading" | "success" | "failed";
   message: string;
   startedAt: string | null;
   finishedAt: string | null;

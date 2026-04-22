@@ -57,8 +57,8 @@ export class EtlService {
       .then((result) => {
         const finishedAt = new Date().toISOString();
         this.currentStatus = {
-          status: "completed",
-          stage: "completed",
+          status: "success",
+          stage: "success",
           message: `ETL completed: inserted ${result.inserted} rows from ${result.extracted}`,
           startedAt,
           finishedAt,

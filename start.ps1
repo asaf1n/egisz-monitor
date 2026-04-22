@@ -1,8 +1,4 @@
 #!/usr/bin/env powershell
-# ============================================================================
-# EGISZ-Monitor Build & Deployment Script (v1.1.0)
-# Windows PowerShell
-# ============================================================================
 
 param(
     [string]$Version = "1.1.0",
@@ -19,14 +15,17 @@ if (-not $CommitSha) {
     $CommitSha = "unknown"
 }
 
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "EGISZ-Monitor Build v$Version" -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "Service: $Service"
-Write-Host "Registry: $Registry"
-Write-Host "Build Date: $BuildDate"
-Write-Host "Commit: $CommitSha"
-Write-Host ""
+function Write-Banner {
+    param(
+        [string]$Title,
+        [string]$Color = "Cyan"
+    )
+
+    Write-Host ""
+    Write-Host "========================================" -ForegroundColor $Color
+    Write-Host $Title -ForegroundColor $Color
+    Write-Host "========================================" -ForegroundColor $Color
+}
 
 function Build-Backend {
     Write-Host "[1/2] Building backend v$Version..." -ForegroundColor Yellow
@@ -43,12 +42,12 @@ function Build-Backend {
         -f backend/Dockerfile `
         backend/
 
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Backend image built successfully" -ForegroundColor Green
-    } else {
+    if ($LASTEXITCODE -ne 0) {
         Write-Host "Backend build failed" -ForegroundColor Red
         exit 1
     }
+
+    Write-Host "Backend image built successfully" -ForegroundColor Green
 }
 
 function Build-Frontend {
@@ -66,12 +65,12 @@ function Build-Frontend {
         -f frontend/Dockerfile `
         frontend/
 
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Frontend image built successfully" -ForegroundColor Green
-    } else {
+    if ($LASTEXITCODE -ne 0) {
         Write-Host "Frontend build failed" -ForegroundColor Red
         exit 1
     }
+
+    Write-Host "Frontend image built successfully" -ForegroundColor Green
 }
 
 function Test-Security {
@@ -103,6 +102,14 @@ function Get-ImageSize {
     docker image ls --filter "reference=$Registry/egisz-*:$Version" --format "table {{.Repository}}:{{.Tag}}`t{{.Size}}"
 }
 
+function Show-Endpoints {
+    Write-Banner "EGISZ Monitor"
+    Write-Host "Control panel:        http://localhost:8812" -ForegroundColor Cyan
+    Write-Host "Metabase full UI:     http://localhost:3001" -ForegroundColor Green
+    Write-Host "Public dashboards:    http://localhost:3002" -ForegroundColor Green
+    Write-Host "Backend healthcheck:  http://localhost:3000/health" -ForegroundColor Yellow
+}
+
 function Deploy-Dev {
     Write-Host ""
     Write-Host "[Deploy] Starting development stack..." -ForegroundColor Cyan
@@ -118,8 +125,9 @@ function Deploy-Dev {
         exit 1
     }
 
-    Write-Host "Stack started" -ForegroundColor Green
+    Write-Host "Development stack started" -ForegroundColor Green
     docker compose -f docker-compose.yml -f docker-compose.dev.yml ps
+    Show-Endpoints
 }
 
 function Deploy-Prod {
@@ -136,8 +144,9 @@ function Deploy-Prod {
         exit 1
     }
 
-    Write-Host "Stack deployed" -ForegroundColor Green
+    Write-Host "Production stack deployed" -ForegroundColor Green
     docker compose -f docker-compose.prod.yml ps
+    Show-Endpoints
 }
 
 function Show-Help {
@@ -147,10 +156,10 @@ EGISZ-Monitor Build Script v1.1.0
 Usage: .\start.ps1 -Version 1.1.0 -Service all -Action build
 
 Parameters:
-  -Version <string>        Version tag (default: 1.1.0)
-  -Service <all|backend|frontend> (default: all)
-  -Action <build|deploy|test|prod> (default: build)
-  -Registry <string>       Docker registry (default: localhost:5000)
+  -Version <string>                 Version tag (default: 1.1.0)
+  -Service <all|backend|frontend>   Service scope (default: all)
+  -Action <build|deploy|test|prod>  Action to run (default: build)
+  -Registry <string>                Docker registry (default: localhost:5000)
 
 Examples:
   .\start.ps1 -Version 1.1.0 -Service all -Action build
@@ -158,6 +167,12 @@ Examples:
   .\start.ps1 -Action test
 "@
 }
+
+Write-Banner "EGISZ-Monitor Build v$Version"
+Write-Host "Service: $Service"
+Write-Host "Registry: $Registry"
+Write-Host "Build Date: $BuildDate"
+Write-Host "Commit: $CommitSha"
 
 if ($Action -eq "build") {
     if ($Service -eq "all" -or $Service -eq "backend") {
@@ -179,7 +194,4 @@ if ($Action -eq "build") {
     Show-Help
 }
 
-Write-Host ""
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "Complete" -ForegroundColor Green
-Write-Host "========================================" -ForegroundColor Cyan
+Write-Banner "Complete" "Green"

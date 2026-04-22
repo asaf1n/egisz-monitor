@@ -29,7 +29,7 @@ interface TrendRow {
 }
 
 interface ClinicErrorRow {
-  jname: string | null;
+  clinic_display_name: string;
   mo_uid: string;
   total_count: string;
   error_count: string;
@@ -83,8 +83,10 @@ export class ReportsController {
   };
 
   getKpi = async (_request: Request, response: Response): Promise<void> => {
+    const period = this.getReportPeriod(_request);
+
     try {
-      const result = await this.postgresService.query<KpiRow>(this.buildKpiQuery());
+      const result = await this.postgresService.query<KpiRow>(this.buildKpiQuery(period));
       const row = result.rows[0];
 
       response.status(200).json({
@@ -101,8 +103,10 @@ export class ReportsController {
   };
 
   getErrorsPie = async (_request: Request, response: Response): Promise<void> => {
+    const period = this.getReportPeriod(_request);
+
     try {
-      const result = await this.postgresService.query<ErrorPieRow>(this.buildErrorsPieQuery());
+      const result = await this.postgresService.query<ErrorPieRow>(this.buildErrorsPieQuery(period));
 
       response.status(200).json(
         result.rows.map((row) => ({
@@ -119,8 +123,10 @@ export class ReportsController {
   };
 
   getStatusHeatmap = async (_request: Request, response: Response): Promise<void> => {
+    const period = this.getReportPeriod(_request);
+
     try {
-      const result = await this.postgresService.query<StatusHeatmapRow>(this.buildStatusHeatmapQuery());
+      const result = await this.postgresService.query<StatusHeatmapRow>(this.buildStatusHeatmapQuery(period));
 
       response.status(200).json(
         result.rows.map((row) => ({
@@ -140,8 +146,10 @@ export class ReportsController {
   };
 
   getHourlyTrend = async (_request: Request, response: Response): Promise<void> => {
+    const period = this.getReportPeriod(_request);
+
     try {
-      const result = await this.postgresService.query<TrendRow>(this.buildHourlyTrendQuery());
+      const result = await this.postgresService.query<TrendRow>(this.buildHourlyTrendQuery(period));
 
       response.status(200).json(
         result.rows.map((row) => ({
@@ -159,12 +167,14 @@ export class ReportsController {
   };
 
   getClinicErrors = async (_request: Request, response: Response): Promise<void> => {
+    const period = this.getReportPeriod(_request);
+
     try {
-      const result = await this.postgresService.query<ClinicErrorRow>(this.buildClinicErrorsQuery());
+      const result = await this.postgresService.query<ClinicErrorRow>(this.buildClinicErrorsQuery(period));
 
       response.status(200).json(
         result.rows.map((row) => ({
-          clinicName: row.jname,
+          clinicName: row.clinic_display_name,
           moUid: row.mo_uid,
           totalCount: Number(row.total_count),
           errorCount: Number(row.error_count),
@@ -181,8 +191,10 @@ export class ReportsController {
   };
 
   getServiceHealth = async (_request: Request, response: Response): Promise<void> => {
+    const period = this.getReportPeriod(_request);
+
     try {
-      const result = await this.postgresService.query<ServiceHealthRow>(this.buildServiceHealthQuery());
+      const result = await this.postgresService.query<ServiceHealthRow>(this.buildServiceHealthQuery(period));
 
       response.status(200).json(
         result.rows.map((row) => ({
@@ -203,8 +215,10 @@ export class ReportsController {
   };
 
   getCostlyClinics = async (_request: Request, response: Response): Promise<void> => {
+    const period = this.getReportPeriod(_request);
+
     try {
-      const result = await this.postgresService.query<CostlyClinicRow>(this.buildCostlyClinicQuery());
+      const result = await this.postgresService.query<CostlyClinicRow>(this.buildCostlyClinicQuery(period));
 
       response.status(200).json(
         result.rows.map((row) => ({
@@ -227,8 +241,10 @@ export class ReportsController {
   };
 
   getVpnNodeStatus = async (_request: Request, response: Response): Promise<void> => {
+    const period = this.getReportPeriod(_request);
+
     try {
-      const result = await this.postgresService.query<VpnNodeRow>(this.buildVpnNodeStatusQuery());
+      const result = await this.postgresService.query<VpnNodeRow>(this.buildVpnNodeStatusQuery(period));
 
       response.status(200).json(
         result.rows.map((row) => ({
@@ -263,7 +279,27 @@ export class ReportsController {
     }
   };
 
-  private buildKpiQuery(): string {
+  private getReportPeriod(request: Request): string {
+    const period = request.query.period;
+    return typeof period === "string" ? period.toLowerCase() : "24h";
+  }
+
+  private resolvePeriodInterval(period?: string): string {
+    switch (period?.toLowerCase()) {
+      case "7d":
+        return "7 days";
+      case "30d":
+        return "30 days";
+      default:
+        return "24 hours";
+    }
+  }
+
+  private buildDateFilter(period: string | undefined, alias = "ua.transaction_date"): string {
+    return `${alias} >= NOW() - INTERVAL '${this.resolvePeriodInterval(period)}'`;
+  }
+
+  private buildKpiQuery(period?: string): string {
     const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
 
     return `
@@ -278,11 +314,11 @@ export class ReportsController {
         ) AS success_rate,
         COUNT(DISTINCT NULLIF(TRIM(ua.error_text), ''))::BIGINT AS unique_errors
       FROM ${unifiedAnalytics} ua
-      WHERE ua.transaction_date >= NOW() - INTERVAL '24 hours'
+      WHERE ${this.buildDateFilter(period, "ua.transaction_date")}
     `;
   }
 
-  private buildErrorsPieQuery(): string {
+  private buildErrorsPieQuery(period?: string): string {
     const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
 
     return `
@@ -291,14 +327,15 @@ export class ReportsController {
         COUNT(*)::BIGINT AS count
       FROM ${unifiedAnalytics} ua
       WHERE ua.status = 'error'
-        AND ua.transaction_date >= NOW() - INTERVAL '24 hours'
+        AND ${this.buildDateFilter(period, "ua.transaction_date")}
       GROUP BY COALESCE(NULLIF(TRIM(ua.error_category_ru), ''), 'Неизвестная')
       ORDER BY count DESC, category ASC
     `;
   }
 
-  private buildStatusHeatmapQuery(): string {
+  private buildStatusHeatmapQuery(period?: string): string {
     const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
+    const dateFilter = this.buildDateFilter(period, "ua.transaction_date");
 
     return `
       WITH latest_activity AS (
@@ -307,6 +344,7 @@ export class ReportsController {
           ua.service_kind AS semd_type,
           MAX(ua.transaction_date) AS last_activity_at
         FROM ${unifiedAnalytics} ua
+        WHERE ${dateFilter}
         GROUP BY
           ua.mo_uid,
           ua.service_kind
@@ -329,6 +367,7 @@ export class ReportsController {
           ua.clinic_display_name,
           ua.service_kind AS semd_type
         FROM ${unifiedAnalytics} ua
+      WHERE ${dateFilter}
       ) ua
         ON ua.mo_uid = la.mo_uid
        AND ua.semd_type = la.semd_type
@@ -336,13 +375,14 @@ export class ReportsController {
     `;
   }
 
-  private buildHourlyTrendQuery(): string {
+  private buildHourlyTrendQuery(period?: string): string {
     const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
+    const intervalValue = this.resolvePeriodInterval(period);
 
     return `
       WITH series AS (
         SELECT generate_series(
-          date_trunc('hour', NOW() - INTERVAL '23 hours'),
+          date_trunc('hour', NOW() - INTERVAL '${intervalValue}'),
           date_trunc('hour', NOW()),
           INTERVAL '1 hour'
         ) AS hour_bucket
@@ -353,7 +393,7 @@ export class ReportsController {
           COUNT(*) FILTER (WHERE ua.status = 'success')::BIGINT AS success_count,
           COUNT(*) FILTER (WHERE ua.status = 'error')::BIGINT AS error_count
         FROM ${unifiedAnalytics} ua
-        WHERE ua.transaction_date >= NOW() - INTERVAL '24 hours'
+        WHERE ${this.buildDateFilter(period, "ua.transaction_date")}
         GROUP BY date_trunc('hour', ua.transaction_date)
       )
       SELECT
@@ -366,12 +406,12 @@ export class ReportsController {
     `;
   }
 
-  private buildClinicErrorsQuery(): string {
+  private buildClinicErrorsQuery(period?: string): string {
     const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
 
     return `
       SELECT
-        ua.jname,
+        ua.clinic_display_name,
         ua.mo_uid,
         COUNT(*)::BIGINT AS total_count,
         COUNT(*) FILTER (WHERE ua.status = 'error')::BIGINT AS error_count,
@@ -384,15 +424,15 @@ export class ReportsController {
         ) AS success_rate,
         MAX(ua.transaction_date) FILTER (WHERE ua.status = 'error') AS last_error_at
       FROM ${unifiedAnalytics} ua
-      WHERE ua.transaction_date >= NOW() - INTERVAL '7 days'
-      GROUP BY ua.jname, ua.mo_uid
+      WHERE ${this.buildDateFilter(period, "ua.transaction_date")}
+      GROUP BY ua.clinic_display_name, ua.mo_uid
       HAVING COUNT(*) FILTER (WHERE ua.status = 'error') > 0
-      ORDER BY error_count DESC, last_error_at DESC NULLS LAST, ua.jname ASC NULLS LAST, ua.mo_uid ASC
+      ORDER BY error_count DESC, last_error_at DESC NULLS LAST, ua.clinic_display_name ASC, ua.mo_uid ASC
       LIMIT 10
     `;
   }
 
-  private buildServiceHealthQuery(): string {
+  private buildServiceHealthQuery(period?: string): string {
     const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
 
     return `
@@ -410,14 +450,15 @@ export class ReportsController {
         ) AS success_rate,
         MAX(ua.transaction_date) AS last_exchange_at
       FROM ${unifiedAnalytics} ua
-      WHERE ua.transaction_date >= NOW() - INTERVAL '7 days'
+      WHERE ${this.buildDateFilter(period, "ua.transaction_date")}
       GROUP BY ua.service_display_name
       ORDER BY error_count DESC, success_rate ASC, semd_type ASC
     `;
   }
 
-  private buildCostlyClinicQuery(): string {
+  private buildCostlyClinicQuery(period?: string): string {
     const economicMetrics = this.postgresService.getQualifiedTableName("v_support_economic_metrics");
+    const intervalValue = this.resolvePeriodInterval(period);
 
     return `
       SELECT
@@ -430,31 +471,60 @@ export class ReportsController {
         AVG(sem.error_rate_pct)::DECIMAL(5,2) AS error_rate_pct,
         (ARRAY_AGG(DISTINCT sem.support_priority ORDER BY sem.support_priority DESC))[1] AS support_priority
       FROM ${economicMetrics} sem
-      WHERE sem.date_day >= CURRENT_DATE - INTERVAL '30 days'
+      WHERE sem.date_day >= CURRENT_DATE - INTERVAL '${intervalValue}'
       GROUP BY sem.clinic_id, sem.jname, sem.mo_uid, sem.clinic_display_name
       ORDER BY total_error_cost DESC NULLS LAST
       LIMIT 15
     `;
   }
 
-  private buildVpnNodeStatusQuery(): string {
-    const vpnStability = this.postgresService.getQualifiedTableName("v_vpn_node_stability");
+  private buildVpnNodeStatusQuery(period?: string): string {
+    const unifiedAnalytics = this.postgresService.getQualifiedTableName("v_unified_analytics");
+    const intervalValue = this.resolvePeriodInterval(period);
 
     return `
+      WITH hourly_stats AS (
+        SELECT
+          ua.hostname,
+          date_trunc('hour', ua.transaction_date) AS date_hour,
+          COUNT(*) AS total_requests,
+          COUNT(*) FILTER (WHERE ua.status = 'success') AS successful_requests,
+          COUNT(*) FILTER (WHERE ua.status = 'error') AS failed_requests,
+          ROUND(
+            100.0 * COUNT(*) FILTER (WHERE ua.status = 'success') / NULLIF(COUNT(*), 0),
+            2
+          ) AS success_rate_pct
+        FROM ${unifiedAnalytics} ua
+        WHERE ua.hostname IS NOT NULL
+          AND ua.transaction_date >= NOW() - INTERVAL '${intervalValue}'
+        GROUP BY ua.hostname, date_trunc('hour', ua.transaction_date)
+      )
       SELECT
-        vns.hostname,
-        SUM(vns.total_requests)::BIGINT AS total_requests,
-        SUM(vns.successful_requests)::BIGINT AS successful_requests,
-        SUM(vns.failed_requests)::BIGINT AS failed_requests,
-        ROUND(
-          AVG(vns.success_rate_pct),
-          2
-        ) AS success_rate_pct,
-        (ARRAY_AGG(DISTINCT vns.stability_status ORDER BY vns.stability_status DESC))[1] AS stability_status,
-        (ARRAY_AGG(DISTINCT vns.performance_status ORDER BY vns.performance_status DESC))[1] AS performance_status
-      FROM ${vpnStability} vns
-      GROUP BY vns.hostname
-      ORDER BY success_rate_pct ASC, vns.hostname ASC
+        hostname,
+        SUM(total_requests)::BIGINT AS total_requests,
+        SUM(successful_requests)::BIGINT AS successful_requests,
+        SUM(failed_requests)::BIGINT AS failed_requests,
+        ROUND(AVG(success_rate_pct), 2) AS success_rate_pct,
+        (ARRAY_AGG(DISTINCT stability_status ORDER BY stability_status DESC))[1] AS stability_status,
+        (ARRAY_AGG(DISTINCT performance_status ORDER BY performance_status DESC))[1] AS performance_status
+      FROM (
+        SELECT
+          hostname,
+          date_hour,
+          total_requests,
+          successful_requests,
+          failed_requests,
+          success_rate_pct,
+          CASE
+            WHEN success_rate_pct < 90 THEN 'critical'
+            WHEN success_rate_pct < 95 THEN 'warning'
+            ELSE 'stable'
+          END AS stability_status,
+          'normal' AS performance_status
+        FROM hourly_stats
+      ) vns
+      GROUP BY hostname
+      ORDER BY success_rate_pct ASC, hostname ASC
     `;
   }
 }

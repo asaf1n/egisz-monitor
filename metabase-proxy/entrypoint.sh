@@ -51,6 +51,8 @@ server {
   }
 
   location = / {
+    default_type text/html;
+    add_header Content-Type text/html;
     return 200 '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="3"><title>Metabase</title></head><body style="font-family:sans-serif;background:#111827;color:#e5e7eb;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">Metabase initializing...</body></html>';
   }
 

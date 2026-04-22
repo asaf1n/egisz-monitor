@@ -98,6 +98,7 @@ services:
       METABASE_ADMIN_EMAIL: ${METABASE_ADMIN_EMAIL:-admin@egisz-monitor.local}
       METABASE_ADMIN_PASSWORD: ${METABASE_ADMIN_PASSWORD:-ChangeMeNow123!}
       APP_DATABASE_NAME: ${DB_NAME:-egisz_monitor}
+      APP_DATABASE_DISPLAY_NAME: ${APP_DATABASE_DISPLAY_NAME:-EGISZ Reports}
       APP_DATABASE_USER: ${DB_USER:-egisz}
       APP_DATABASE_PASSWORD: ${DB_PASSWORD:-egisz}
     depends_on:

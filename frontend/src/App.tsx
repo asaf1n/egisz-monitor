@@ -18,10 +18,10 @@ function Navigation(): JSX.Element {
         </div>
 
         <nav className="flex items-center gap-2 rounded-full border border-ink/8 bg-canvas/75 p-1">
-          <NavLink to="/" end className={getLinkClassName}>
+          <NavLink to="/dashboard" className={getLinkClassName}>
             Дашборд
           </NavLink>
-          <NavLink to="/settings" className={getLinkClassName}>
+          <NavLink to="/" end className={getLinkClassName}>
             Настройки
           </NavLink>
         </nav>
@@ -35,8 +35,8 @@ function App(): JSX.Element {
     <>
       <Navigation />
       <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/settings" element={<Configuration />} />
+        <Route path="/" element={<Configuration />} />
+        <Route path="/dashboard" element={<Dashboard />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

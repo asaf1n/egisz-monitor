@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import {
   Bar,
   BarChart,
@@ -20,19 +20,16 @@ import {
   fetchCostlyClinics,
   fetchDashboardKpi,
   fetchErrorsPie,
-  fetchEtlStatus,
   fetchHourlyTrend,
   fetchServiceHealth,
   fetchStatusHeatmap,
-  fetchVpnNodeStatus,
-  runEtlSync
+  fetchVpnNodeStatus
 } from "../../services/api";
 import {
   ClinicErrorRow,
   CostlyClinicRow,
   DashboardKPI,
   ErrorPieData,
-  EtlRunStatus,
   HourlyTrendRow,
   ServiceHealthRow,
   StatusHeatmapRow,
@@ -47,16 +44,6 @@ const EMPTY_KPI: DashboardKPI = {
   total: 0,
   successRate: 0,
   uniqueErrors: 0
-};
-
-const EMPTY_ETL_STATUS: EtlRunStatus = {
-  status: "idle",
-  stage: "idle",
-  message: "Синхронизация не запускалась",
-  startedAt: null,
-  finishedAt: null,
-  result: null,
-  error: null
 };
 
 const STATUS_STYLES: Record<StatusHeatmapRow["status"], { badge: string; row: string; label: string }> = {
@@ -98,23 +85,6 @@ function formatHourLabel(value: string): string {
   }).format(date);
 }
 
-function formatEtlStage(stage: EtlRunStatus["stage"]): string {
-  switch (stage) {
-    case "extracting":
-      return "Извлечение";
-    case "parsing":
-      return "Парсинг";
-    case "loading":
-      return "Загрузка";
-    case "completed":
-      return "Завершено";
-    case "failed":
-      return "Ошибка";
-    default:
-      return "Ожидание";
-  }
-}
-
 function KpiCard({ title, value, accent }: { title: string; value: string; accent: string }): JSX.Element {
   return (
     <article className="rounded-3xl border border-ink/8 bg-white p-6 shadow-card">
@@ -125,15 +95,7 @@ function KpiCard({ title, value, accent }: { title: string; value: string; accen
   );
 }
 
-function ChartCard({
-  eyebrow,
-  title,
-  children
-}: {
-  eyebrow: string;
-  title: string;
-  children: React.ReactNode;
-}): JSX.Element {
+function ChartCard({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }): JSX.Element {
   return (
     <article className="rounded-3xl border border-ink/8 bg-canvas/35 p-6">
       <p className="text-sm text-ink/45">{eyebrow}</p>
@@ -152,13 +114,17 @@ export function Dashboard(): JSX.Element {
   const [serviceHealth, setServiceHealth] = useState<ServiceHealthRow[]>([]);
   const [costlyClinics, setCostlyClinics] = useState<CostlyClinicRow[]>([]);
   const [vpnNodes, setVpnNodes] = useState<VpnNodeRow[]>([]);
-  const [etlStatus, setEtlStatus] = useState<EtlRunStatus>(EMPTY_ETL_STATUS);
+  const [selectedPeriod, setSelectedPeriod] = useState("24h");
   const [isLoading, setIsLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [alert, setAlert] = useState<{ tone: "success" | "error"; message: string } | null>(null);
 
-  async function loadDashboard(options?: { silent?: boolean }): Promise<void> {
+  const periodOptions = [
+    { label: "24 часа", value: "24h" },
+    { label: "7 дней", value: "7d" },
+    { label: "30 дней", value: "30d" }
+  ];
+
+  async function loadDashboard(period = selectedPeriod, options?: { silent?: boolean }): Promise<void> {
     if (!options?.silent) {
       setIsLoading(true);
     }
@@ -166,17 +132,17 @@ export function Dashboard(): JSX.Element {
     setError(null);
 
     try {
-      const [kpiData, pieData, heatmapData, trendData, clinicData, serviceData, costlyClinicData, vpnNodeData, etlData] = await Promise.all([
-        fetchDashboardKpi(),
-        fetchErrorsPie(),
-        fetchStatusHeatmap(),
-        fetchHourlyTrend(),
-        fetchClinicErrors(),
-        fetchServiceHealth(),
-        fetchCostlyClinics(),
-        fetchVpnNodeStatus(),
-        fetchEtlStatus()
-      ]);
+      const [kpiData, pieData, heatmapData, trendData, clinicData, serviceData, costlyClinicData, vpnNodeData] =
+        await Promise.all([
+          fetchDashboardKpi(period),
+          fetchErrorsPie(period),
+          fetchStatusHeatmap(period),
+          fetchHourlyTrend(period),
+          fetchClinicErrors(period),
+          fetchServiceHealth(period),
+          fetchCostlyClinics(period),
+          fetchVpnNodeStatus(period)
+        ]);
 
       setKpi(kpiData);
       setErrorsPie(pieData);
@@ -186,7 +152,6 @@ export function Dashboard(): JSX.Element {
       setServiceHealth(serviceData);
       setCostlyClinics(costlyClinicData);
       setVpnNodes(vpnNodeData);
-      setEtlStatus(etlData);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить данные дашборда");
     } finally {
@@ -196,76 +161,17 @@ export function Dashboard(): JSX.Element {
     }
   }
 
+  function handlePeriodChange(event: ChangeEvent<HTMLSelectElement>): void {
+    const nextPeriod = event.target.value;
+    setSelectedPeriod(nextPeriod);
+    void loadDashboard(nextPeriod);
+  }
+
   useEffect(() => {
     void loadDashboard();
   }, []);
 
-  useEffect(() => {
-    if (!isSyncing) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      void fetchEtlStatus()
-        .then(async (status) => {
-          setEtlStatus(status);
-
-          if (status.status === "completed" && status.result) {
-            window.clearInterval(timer);
-            setIsSyncing(false);
-            await loadDashboard({ silent: true });
-            setAlert({
-              tone: "success",
-              message: `Синхронизация завершена. Загружено ${status.result.inserted} записей из ${status.result.extracted}.`
-            });
-          }
-
-          if (status.status === "failed") {
-            window.clearInterval(timer);
-            setIsSyncing(false);
-            setAlert({
-              tone: "error",
-              message: status.error ?? "Синхронизация завершилась с ошибкой"
-            });
-          }
-        })
-        .catch((statusError) => {
-          window.clearInterval(timer);
-          setIsSyncing(false);
-          setAlert({
-            tone: "error",
-            message: statusError instanceof Error ? statusError.message : "Не удалось получить статус ETL"
-          });
-        });
-    }, 2000);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [isSyncing]);
-
-  async function handleSync(): Promise<void> {
-    setIsSyncing(true);
-    setAlert(null);
-
-    try {
-      const status = await runEtlSync();
-      setEtlStatus(status);
-    } catch (syncError) {
-      setIsSyncing(false);
-      setAlert({
-        tone: "error",
-        message: syncError instanceof Error ? syncError.message : "Не удалось синхронизировать данные"
-      });
-    }
-  }
-
-  const etlToneClass =
-    etlStatus.status === "failed"
-      ? "border-rose-200 bg-rose-50 text-rose-800"
-      : etlStatus.status === "completed"
-        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-        : "border-amber-200 bg-amber-50 text-amber-900";
+  const periodLabel = periodOptions.find((option) => option.value === selectedPeriod)?.label ?? "24 часа";
 
   return (
     <main className="min-h-screen bg-canvas text-ink">
@@ -283,39 +189,28 @@ export function Dashboard(): JSX.Element {
             </div>
 
             <div className="flex flex-col items-start gap-3 md:items-end">
-              <button
-                className="inline-flex items-center justify-center rounded-full bg-moss px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#2f4833] disabled:cursor-not-allowed disabled:opacity-70"
-                type="button"
-                onClick={() => void handleSync()}
-                disabled={isLoading || isSyncing}
-              >
-                {isSyncing ? "Синхронизация..." : "Синхронизировать данные"}
-              </button>
+              <div className="inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white px-3 py-2 text-sm text-ink shadow-sm">
+                <label htmlFor="period" className="text-ink/70">
+                  Период
+                </label>
+                <select
+                  id="period"
+                  value={selectedPeriod}
+                  onChange={handlePeriodChange}
+                  className="rounded-full border border-ink/10 bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-moss focus:ring-2 focus:ring-moss/15"
+                >
+                  {periodOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="rounded-full border border-ink/8 bg-canvas/70 px-4 py-2 text-sm text-ink/55">
                 Источник: Firebird, аналитика: PostgreSQL / Metabase
               </div>
             </div>
           </div>
-
-          <div className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${etlToneClass}`}>
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <span className="font-medium">Статус ETL: {formatEtlStage(etlStatus.stage)}</span>
-              <span>{etlStatus.startedAt ? `Запуск: ${formatDate(etlStatus.startedAt)}` : "Запуск не выполнялся"}</span>
-            </div>
-            <div className="mt-2">{etlStatus.message}</div>
-          </div>
-
-          {alert ? (
-            <div
-              className={`mt-6 rounded-2xl border px-4 py-3 text-sm ${
-                alert.tone === "success"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                  : "border-rose-200 bg-rose-50 text-rose-800"
-              }`}
-            >
-              {alert.message}
-            </div>
-          ) : null}
 
           {isLoading ? (
             <div className="mt-8 rounded-2xl border border-dashed border-ink/12 bg-canvas/35 p-10 text-center text-ink/55">
@@ -328,13 +223,13 @@ export function Dashboard(): JSX.Element {
           ) : (
             <>
               <section className="mt-8 grid gap-4 md:grid-cols-3">
-                <KpiCard title="Всего записей за 24 часа" value={kpi.total.toLocaleString("ru-RU")} accent="bg-moss" />
+                <KpiCard title={`Всего записей за ${periodLabel.toLowerCase()}`} value={kpi.total.toLocaleString("ru-RU")} accent="bg-moss" />
                 <KpiCard title="Успешных, %" value={`${kpi.successRate.toFixed(2)}%`} accent="bg-clay" />
                 <KpiCard title="Уникальных ошибок" value={kpi.uniqueErrors.toLocaleString("ru-RU")} accent="bg-amber-500" />
               </section>
 
               <section className="mt-8 grid gap-6 xl:grid-cols-[1fr_1.1fr]">
-                <ChartCard eyebrow="Ошибки" title="Распределение категорий за 24 часа">
+                <ChartCard eyebrow="Ошибки" title={`Распределение категорий за ${periodLabel.toLowerCase()}`}>
                   <div className="h-[320px]">
                     {errorsPie.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
@@ -373,7 +268,7 @@ export function Dashboard(): JSX.Element {
               </section>
 
               <section className="mt-8 grid gap-6 xl:grid-cols-[1.15fr_1fr]">
-                <ChartCard eyebrow="Проблемные клиники" title="Топ организаций по ошибкам за 7 дней">
+                <ChartCard eyebrow="Проблемные клиники" title={`Топ организаций по ошибкам за ${periodLabel.toLowerCase()}`}>
                   {clinicErrors.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="min-w-full border-separate border-spacing-y-3">
@@ -390,7 +285,7 @@ export function Dashboard(): JSX.Element {
                         <tbody>
                           {clinicErrors.map((row) => (
                             <tr key={row.moUid} className="bg-white text-sm text-ink">
-                              <td className="rounded-l-2xl px-4 py-4 font-medium">{row.clinicName ?? row.moUid}</td>
+                              <td className="rounded-l-2xl px-4 py-4 font-medium">{row.clinicName}</td>
                               <td className="px-4 py-4 text-ink/70">{row.moUid}</td>
                               <td className="px-4 py-4 text-rose-700">{row.errorCount.toLocaleString("ru-RU")}</td>
                               <td className="px-4 py-4">{row.totalCount.toLocaleString("ru-RU")}</td>
@@ -403,12 +298,12 @@ export function Dashboard(): JSX.Element {
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-ink/12 bg-white/60 p-6 text-center text-ink/55">
-                      За последние 7 дней проблемные организации не выявлены
+                      За выбранный период проблемные организации не выявлены
                     </div>
                   )}
                 </ChartCard>
 
-                <ChartCard eyebrow="Состояние сервисов" title="Ошибки по типам сервисов за 7 дней">
+                <ChartCard eyebrow="Состояние сервисов" title={`Ошибки по типам сервисов за ${periodLabel.toLowerCase()}`}>
                   {serviceHealth.length > 0 ? (
                     <div className="h-[360px]">
                       <ResponsiveContainer width="100%" height="100%">
@@ -447,17 +342,19 @@ export function Dashboard(): JSX.Element {
                         <tbody>
                           {costlyClinics.map((row) => (
                             <tr key={row.moUid} className="bg-white text-sm text-ink">
-                              <td className="rounded-l-2xl px-4 py-4 font-medium">{row.clinicName ?? row.clinicDisplayName}</td>
+                              <td className="rounded-l-2xl px-4 py-4 font-medium">{row.clinicName || row.clinicDisplayName}</td>
                               <td className="px-4 py-4 font-semibold text-amber-700">{row.totalErrorCost.toFixed(2)}</td>
                               <td className="px-4 py-4 text-rose-700">{row.errorCount.toLocaleString("ru-RU")}</td>
                               <td className="rounded-r-2xl px-4 py-4">
-                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                  row.supportPriority === "high"
-                                    ? "bg-rose-100 text-rose-700"
-                                    : row.supportPriority === "medium"
-                                      ? "bg-amber-100 text-amber-700"
-                                      : "bg-emerald-100 text-emerald-700"
-                                }`}>
+                                <span
+                                  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                    row.supportPriority === "high"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : row.supportPriority === "medium"
+                                        ? "bg-amber-100 text-amber-700"
+                                        : "bg-emerald-100 text-emerald-700"
+                                  }`}
+                                >
                                   {row.supportPriority === "high" ? "Высокий" : row.supportPriority === "medium" ? "Средний" : "Низкий"}
                                 </span>
                               </td>
@@ -473,7 +370,7 @@ export function Dashboard(): JSX.Element {
                   )}
                 </ChartCard>
 
-                <ChartCard eyebrow="Стабильность инфраструктуры" title="Статус VPN узлов за 24 часа">
+                <ChartCard eyebrow="Стабильность инфраструктуры" title={`Статус VPN узлов за ${periodLabel.toLowerCase()}`}>
                   {vpnNodes.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="min-w-full border-separate border-spacing-y-3">
@@ -491,24 +388,28 @@ export function Dashboard(): JSX.Element {
                               <td className="rounded-l-2xl px-4 py-4 font-medium">{row.hostname}</td>
                               <td className="px-4 py-4">{row.successRatePct.toFixed(2)}%</td>
                               <td className="px-4 py-4">
-                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                  row.stabilityStatus === "critical"
-                                    ? "bg-rose-100 text-rose-700"
-                                    : row.stabilityStatus === "warning"
-                                      ? "bg-amber-100 text-amber-700"
-                                      : "bg-emerald-100 text-emerald-700"
-                                }`}>
+                                <span
+                                  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                    row.stabilityStatus === "critical"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : row.stabilityStatus === "warning"
+                                        ? "bg-amber-100 text-amber-700"
+                                        : "bg-emerald-100 text-emerald-700"
+                                  }`}
+                                >
                                   {row.stabilityStatus === "critical" ? "Критичный" : row.stabilityStatus === "warning" ? "Внимание" : "Стабилен"}
                                 </span>
                               </td>
                               <td className="rounded-r-2xl px-4 py-4">
-                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                  row.performanceStatus === "slow"
-                                    ? "bg-amber-100 text-amber-700"
-                                    : row.performanceStatus === "normal"
-                                      ? "bg-blue-100 text-blue-700"
-                                      : "bg-emerald-100 text-emerald-700"
-                                }`}>
+                                <span
+                                  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                    row.performanceStatus === "slow"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : row.performanceStatus === "normal"
+                                        ? "bg-blue-100 text-blue-700"
+                                        : "bg-emerald-100 text-emerald-700"
+                                  }`}
+                                >
                                   {row.performanceStatus === "slow" ? "Медленно" : row.performanceStatus === "normal" ? "Нормально" : "Быстро"}
                                 </span>
                               </td>

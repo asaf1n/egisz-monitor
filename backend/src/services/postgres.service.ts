@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
+﻿import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 
 import {
   AppConfig,
@@ -38,85 +38,85 @@ export class PostgresService {
   private static readonly ETL_LOCK_NAMESPACE = 48219;
   private static readonly ETL_LOCK_KEY = 1;
   private static readonly SEMD_DICTIONARY: Readonly<Record<string, string>> = {
-    "40": "Протокол телемедицинской консультации",
-    "43": "Направление на госпитализацию, восстановительное лечение, обследование, консультацию",
-    "63": "Медицинское заключение об отсутствии медицинских противопоказаний к владению оружием",
-    "64": "Медицинское заключение об отсутствии в организме человека наркотических средств, психотропных веществ и их метаболитов",
-    "65": "Справка для получения путевки на санаторно-курортное лечение",
-    "69": "Протокол гемотрансфузии",
-    "70": "Справка о результатах химико-токсикологических исследований",
-    "73": "Справка о состоянии на учете в диспансере",
-    "74": "Протокол прижизненного патологоанатомического исследования",
-    "75": "Протокол лабораторного исследования",
-    "76": "Медицинское свидетельство о рождении",
-    "78": "Талон № 2 на получение специальных талонов (именных направлений) на проезд к месту лечения",
-    "79": "Справка о прохождении медицинского освидетельствования в психоневрологическом диспансере",
-    "80": "Справка об отсутствии контактов с инфекционными больными",
-    "81": "Справка о временной нетрудоспособности студента/учащегося (болезнь, карантин)",
-    "82": "Медзаключение о группе для занятий физкультурой несовершеннолетнего",
-    "83": "Медицинское заключение об отсутствии противопоказаний к занятию спортом",
-    "84": "Медицинская справка в бассейн",
-    "86": "Направление к месту лечения для получения медицинской помощи",
-    "87": "Справка о состоянии здоровья ребенка, отъезжающего в лагерь (отдых/оздоровление)",
-    "88": "Медицинская справка (для выезжающего за границу)",
-    "93": "Протокол цитологического исследования",
-    "96": "Сведения о результатах диспансеризации или проф. осмотра",
-    "100": "Справка об оплате медицинских услуг для налоговых органов РФ",
-    "101": "Медзаключение о допуске к работам на высоте / обслуживанию подъемных сооружений",
-    "102": "Справка об отказе в направлении на МСЭ",
-    "103": "Медзаключение по результатам предварительного (периодического) медосмотра",
-    "104": "Экстренное извещение об инфекционном заболевании / реакции на прививку",
-    "105": "Сертификат профилактических прививок",
-    "106": "Справка о постановке на учет по беременности",
-    "107": "Справка донору об освобождении от работы",
-    "110": "Протокол инструментального исследования",
-    "111": "Протокол консультации в рамках диспансерного наблюдения",
-    "114": "Сведения медицинского свидетельства о перинатальной смерти (бумажная форма)",
-    "115": "Карта вызова скорой медицинской помощи",
-    "116": "Уведомление о выявлении противопоказаний к владению оружием",
-    "118": "Сведения медицинского свидетельства о рождении (бумажная форма)",
-    "119": "Протокол консультации",
-    "121": "Направление на медико-социальную экспертизу (МСЭ)",
-    "122": "Сведения о результатах диспансеризации или проф. осмотра (актуальная ред.)",
-    "123": "Направление на госпитализацию для оказания ВМП",
-    "124": "Направление на госпитализацию для оказания специализированной медпомощи",
-    "127": "Медицинское свидетельство о перинатальной смерти",
-    "129": "Эпикриз по результатам диспансеризации / проф. осмотра",
-    "131": "Направление к месту лечения для получения медицинской помощи",
-    "132": "Талон на оказание ВМП",
-    "133": "Этапный эпикриз",
-    "134": "Предоперационный эпикриз",
-    "135": "Выписка из истории болезни",
-    "136": "Экстренное извещение о случае острого отравления химической этиологии",
-    "137": "Санаторно-курортная карта",
-    "138": "Программа дополнительного обследования гражданина (ФБМСЭ)",
-    "139": "Справка о результатах химико-токсикологических исследований",
-    "141": "Льготный рецепт на лекарственный препарат / изд. медназначения",
-    "142": "Заключение об установлении факта поствакцинального осложнения",
-    "143": "Заключение о нуждаемости престарелого гражданина в постоянном уходе",
-    "144": "Заключение врачебной комиссии о нуждаемости ветерана в протезах",
-    "145": "Справка о показаниях, по которым ребенок не посещает ДОУ в период учебного процесса",
-    "146": "Талон № 2 на получение спецталонов на проезд к месту лечения",
-    "147": "Выписной эпикриз в стационаре",
-    "148": "Рецепт на лекарственный препарат",
-    "149": "Медзаключение о группе для занятий физкультурой несовершеннолетнего (актуальное)",
-    "150": "Медицинская справка в бассейн (актуальная)",
-    "151": "Справка для получения путевки на санаторно-курортное лечение",
-    "152": "Медицинское заключение об отсутствии противопоказаний к занятию спортом",
-    "153": "Медицинская справка (для выезжающего за границу)",
-    "154": "Справка об отсутствии контактов с инфекционными больными",
-    "155": "Справка об отсутствии противопоказаний для работы с гостайной",
-    "156": "Заключение для граждан, намеревающихся усыновить/удочерить детей",
-    "158": "Выписка из протокола решения врачебной комиссии",
-    "159": "Статистическая карта выбывшего из стационара",
-    "160": "Протокол ТМК для трансграничных решений",
-    "161": "Санаторно-курортная карта для детей",
-    "163": "Протокол медицинской манипуляции",
-    "164": "Экстренное извещение об инфекционном заболевании (актуальное)",
-    "169": "Справка о временной нетрудоспособности студента (ред. 4)",
-    "170": "Сертификат профилактических прививок (ред. 2)",
-    "171": "Медзаключение о наличии/отсутствии противопоказаний у водителей ТС",
-    "172": "Справка о состоянии на учете в диспансере"
+    "40": "РџСЂРѕС‚РѕРєРѕР» С‚РµР»РµРјРµРґРёС†РёРЅСЃРєРѕР№ РєРѕРЅСЃСѓР»СЊС‚Р°С†РёРё",
+    "43": "РќР°РїСЂР°РІР»РµРЅРёРµ РЅР° РіРѕСЃРїРёС‚Р°Р»РёР·Р°С†РёСЋ, РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚РµР»СЊРЅРѕРµ Р»РµС‡РµРЅРёРµ, РѕР±СЃР»РµРґРѕРІР°РЅРёРµ, РєРѕРЅСЃСѓР»СЊС‚Р°С†РёСЋ",
+    "63": "РњРµРґРёС†РёРЅСЃРєРѕРµ Р·Р°РєР»СЋС‡РµРЅРёРµ РѕР± РѕС‚СЃСѓС‚СЃС‚РІРёРё РјРµРґРёС†РёРЅСЃРєРёС… РїСЂРѕС‚РёРІРѕРїРѕРєР°Р·Р°РЅРёР№ Рє РІР»Р°РґРµРЅРёСЋ РѕСЂСѓР¶РёРµРј",
+    "64": "РњРµРґРёС†РёРЅСЃРєРѕРµ Р·Р°РєР»СЋС‡РµРЅРёРµ РѕР± РѕС‚СЃСѓС‚СЃС‚РІРёРё РІ РѕСЂРіР°РЅРёР·РјРµ С‡РµР»РѕРІРµРєР° РЅР°СЂРєРѕС‚РёС‡РµСЃРєРёС… СЃСЂРµРґСЃС‚РІ, РїСЃРёС…РѕС‚СЂРѕРїРЅС‹С… РІРµС‰РµСЃС‚РІ Рё РёС… РјРµС‚Р°Р±РѕР»РёС‚РѕРІ",
+    "65": "РЎРїСЂР°РІРєР° РґР»СЏ РїРѕР»СѓС‡РµРЅРёСЏ РїСѓС‚РµРІРєРё РЅР° СЃР°РЅР°С‚РѕСЂРЅРѕ-РєСѓСЂРѕСЂС‚РЅРѕРµ Р»РµС‡РµРЅРёРµ",
+    "69": "РџСЂРѕС‚РѕРєРѕР» РіРµРјРѕС‚СЂР°РЅСЃС„СѓР·РёРё",
+    "70": "РЎРїСЂР°РІРєР° Рѕ СЂРµР·СѓР»СЊС‚Р°С‚Р°С… С…РёРјРёРєРѕ-С‚РѕРєСЃРёРєРѕР»РѕРіРёС‡РµСЃРєРёС… РёСЃСЃР»РµРґРѕРІР°РЅРёР№",
+    "73": "РЎРїСЂР°РІРєР° Рѕ СЃРѕСЃС‚РѕСЏРЅРёРё РЅР° СѓС‡РµС‚Рµ РІ РґРёСЃРїР°РЅСЃРµСЂРµ",
+    "74": "РџСЂРѕС‚РѕРєРѕР» РїСЂРёР¶РёР·РЅРµРЅРЅРѕРіРѕ РїР°С‚РѕР»РѕРіРѕР°РЅР°С‚РѕРјРёС‡РµСЃРєРѕРіРѕ РёСЃСЃР»РµРґРѕРІР°РЅРёСЏ",
+    "75": "РџСЂРѕС‚РѕРєРѕР» Р»Р°Р±РѕСЂР°С‚РѕСЂРЅРѕРіРѕ РёСЃСЃР»РµРґРѕРІР°РЅРёСЏ",
+    "76": "РњРµРґРёС†РёРЅСЃРєРѕРµ СЃРІРёРґРµС‚РµР»СЊСЃС‚РІРѕ Рѕ СЂРѕР¶РґРµРЅРёРё",
+    "78": "РўР°Р»РѕРЅ в„– 2 РЅР° РїРѕР»СѓС‡РµРЅРёРµ СЃРїРµС†РёР°Р»СЊРЅС‹С… С‚Р°Р»РѕРЅРѕРІ (РёРјРµРЅРЅС‹С… РЅР°РїСЂР°РІР»РµРЅРёР№) РЅР° РїСЂРѕРµР·Рґ Рє РјРµСЃС‚Сѓ Р»РµС‡РµРЅРёСЏ",
+    "79": "РЎРїСЂР°РІРєР° Рѕ РїСЂРѕС…РѕР¶РґРµРЅРёРё РјРµРґРёС†РёРЅСЃРєРѕРіРѕ РѕСЃРІРёРґРµС‚РµР»СЊСЃС‚РІРѕРІР°РЅРёСЏ РІ РїСЃРёС…РѕРЅРµРІСЂРѕР»РѕРіРёС‡РµСЃРєРѕРј РґРёСЃРїР°РЅСЃРµСЂРµ",
+    "80": "РЎРїСЂР°РІРєР° РѕР± РѕС‚СЃСѓС‚СЃС‚РІРёРё РєРѕРЅС‚Р°РєС‚РѕРІ СЃ РёРЅС„РµРєС†РёРѕРЅРЅС‹РјРё Р±РѕР»СЊРЅС‹РјРё",
+    "81": "РЎРїСЂР°РІРєР° Рѕ РІСЂРµРјРµРЅРЅРѕР№ РЅРµС‚СЂСѓРґРѕСЃРїРѕСЃРѕР±РЅРѕСЃС‚Рё СЃС‚СѓРґРµРЅС‚Р°/СѓС‡Р°С‰РµРіРѕСЃСЏ (Р±РѕР»РµР·РЅСЊ, РєР°СЂР°РЅС‚РёРЅ)",
+    "82": "РњРµРґР·Р°РєР»СЋС‡РµРЅРёРµ Рѕ РіСЂСѓРїРїРµ РґР»СЏ Р·Р°РЅСЏС‚РёР№ С„РёР·РєСѓР»СЊС‚СѓСЂРѕР№ РЅРµСЃРѕРІРµСЂС€РµРЅРЅРѕР»РµС‚РЅРµРіРѕ",
+    "83": "РњРµРґРёС†РёРЅСЃРєРѕРµ Р·Р°РєР»СЋС‡РµРЅРёРµ РѕР± РѕС‚СЃСѓС‚СЃС‚РІРёРё РїСЂРѕС‚РёРІРѕРїРѕРєР°Р·Р°РЅРёР№ Рє Р·Р°РЅСЏС‚РёСЋ СЃРїРѕСЂС‚РѕРј",
+    "84": "РњРµРґРёС†РёРЅСЃРєР°СЏ СЃРїСЂР°РІРєР° РІ Р±Р°СЃСЃРµР№РЅ",
+    "86": "РќР°РїСЂР°РІР»РµРЅРёРµ Рє РјРµСЃС‚Сѓ Р»РµС‡РµРЅРёСЏ РґР»СЏ РїРѕР»СѓС‡РµРЅРёСЏ РјРµРґРёС†РёРЅСЃРєРѕР№ РїРѕРјРѕС‰Рё",
+    "87": "РЎРїСЂР°РІРєР° Рѕ СЃРѕСЃС‚РѕСЏРЅРёРё Р·РґРѕСЂРѕРІСЊСЏ СЂРµР±РµРЅРєР°, РѕС‚СЉРµР·Р¶Р°СЋС‰РµРіРѕ РІ Р»Р°РіРµСЂСЊ (РѕС‚РґС‹С…/РѕР·РґРѕСЂРѕРІР»РµРЅРёРµ)",
+    "88": "РњРµРґРёС†РёРЅСЃРєР°СЏ СЃРїСЂР°РІРєР° (РґР»СЏ РІС‹РµР·Р¶Р°СЋС‰РµРіРѕ Р·Р° РіСЂР°РЅРёС†Сѓ)",
+    "93": "РџСЂРѕС‚РѕРєРѕР» С†РёС‚РѕР»РѕРіРёС‡РµСЃРєРѕРіРѕ РёСЃСЃР»РµРґРѕРІР°РЅРёСЏ",
+    "96": "РЎРІРµРґРµРЅРёСЏ Рѕ СЂРµР·СѓР»СЊС‚Р°С‚Р°С… РґРёСЃРїР°РЅСЃРµСЂРёР·Р°С†РёРё РёР»Рё РїСЂРѕС„. РѕСЃРјРѕС‚СЂР°",
+    "100": "РЎРїСЂР°РІРєР° РѕР± РѕРїР»Р°С‚Рµ РјРµРґРёС†РёРЅСЃРєРёС… СѓСЃР»СѓРі РґР»СЏ РЅР°Р»РѕРіРѕРІС‹С… РѕСЂРіР°РЅРѕРІ Р Р¤",
+    "101": "РњРµРґР·Р°РєР»СЋС‡РµРЅРёРµ Рѕ РґРѕРїСѓСЃРєРµ Рє СЂР°Р±РѕС‚Р°Рј РЅР° РІС‹СЃРѕС‚Рµ / РѕР±СЃР»СѓР¶РёРІР°РЅРёСЋ РїРѕРґСЉРµРјРЅС‹С… СЃРѕРѕСЂСѓР¶РµРЅРёР№",
+    "102": "РЎРїСЂР°РІРєР° РѕР± РѕС‚РєР°Р·Рµ РІ РЅР°РїСЂР°РІР»РµРЅРёРё РЅР° РњРЎР­",
+    "103": "РњРµРґР·Р°РєР»СЋС‡РµРЅРёРµ РїРѕ СЂРµР·СѓР»СЊС‚Р°С‚Р°Рј РїСЂРµРґРІР°СЂРёС‚РµР»СЊРЅРѕРіРѕ (РїРµСЂРёРѕРґРёС‡РµСЃРєРѕРіРѕ) РјРµРґРѕСЃРјРѕС‚СЂР°",
+    "104": "Р­РєСЃС‚СЂРµРЅРЅРѕРµ РёР·РІРµС‰РµРЅРёРµ РѕР± РёРЅС„РµРєС†РёРѕРЅРЅРѕРј Р·Р°Р±РѕР»РµРІР°РЅРёРё / СЂРµР°РєС†РёРё РЅР° РїСЂРёРІРёРІРєСѓ",
+    "105": "РЎРµСЂС‚РёС„РёРєР°С‚ РїСЂРѕС„РёР»Р°РєС‚РёС‡РµСЃРєРёС… РїСЂРёРІРёРІРѕРє",
+    "106": "РЎРїСЂР°РІРєР° Рѕ РїРѕСЃС‚Р°РЅРѕРІРєРµ РЅР° СѓС‡РµС‚ РїРѕ Р±РµСЂРµРјРµРЅРЅРѕСЃС‚Рё",
+    "107": "РЎРїСЂР°РІРєР° РґРѕРЅРѕСЂСѓ РѕР± РѕСЃРІРѕР±РѕР¶РґРµРЅРёРё РѕС‚ СЂР°Р±РѕС‚С‹",
+    "110": "РџСЂРѕС‚РѕРєРѕР» РёРЅСЃС‚СЂСѓРјРµРЅС‚Р°Р»СЊРЅРѕРіРѕ РёСЃСЃР»РµРґРѕРІР°РЅРёСЏ",
+    "111": "РџСЂРѕС‚РѕРєРѕР» РєРѕРЅСЃСѓР»СЊС‚Р°С†РёРё РІ СЂР°РјРєР°С… РґРёСЃРїР°РЅСЃРµСЂРЅРѕРіРѕ РЅР°Р±Р»СЋРґРµРЅРёСЏ",
+    "114": "РЎРІРµРґРµРЅРёСЏ РјРµРґРёС†РёРЅСЃРєРѕРіРѕ СЃРІРёРґРµС‚РµР»СЊСЃС‚РІР° Рѕ РїРµСЂРёРЅР°С‚Р°Р»СЊРЅРѕР№ СЃРјРµСЂС‚Рё (Р±СѓРјР°Р¶РЅР°СЏ С„РѕСЂРјР°)",
+    "115": "РљР°СЂС‚Р° РІС‹Р·РѕРІР° СЃРєРѕСЂРѕР№ РјРµРґРёС†РёРЅСЃРєРѕР№ РїРѕРјРѕС‰Рё",
+    "116": "РЈРІРµРґРѕРјР»РµРЅРёРµ Рѕ РІС‹СЏРІР»РµРЅРёРё РїСЂРѕС‚РёРІРѕРїРѕРєР°Р·Р°РЅРёР№ Рє РІР»Р°РґРµРЅРёСЋ РѕСЂСѓР¶РёРµРј",
+    "118": "РЎРІРµРґРµРЅРёСЏ РјРµРґРёС†РёРЅСЃРєРѕРіРѕ СЃРІРёРґРµС‚РµР»СЊСЃС‚РІР° Рѕ СЂРѕР¶РґРµРЅРёРё (Р±СѓРјР°Р¶РЅР°СЏ С„РѕСЂРјР°)",
+    "119": "РџСЂРѕС‚РѕРєРѕР» РєРѕРЅСЃСѓР»СЊС‚Р°С†РёРё",
+    "121": "РќР°РїСЂР°РІР»РµРЅРёРµ РЅР° РјРµРґРёРєРѕ-СЃРѕС†РёР°Р»СЊРЅСѓСЋ СЌРєСЃРїРµСЂС‚РёР·Сѓ (РњРЎР­)",
+    "122": "РЎРІРµРґРµРЅРёСЏ Рѕ СЂРµР·СѓР»СЊС‚Р°С‚Р°С… РґРёСЃРїР°РЅСЃРµСЂРёР·Р°С†РёРё РёР»Рё РїСЂРѕС„. РѕСЃРјРѕС‚СЂР° (Р°РєС‚СѓР°Р»СЊРЅР°СЏ СЂРµРґ.)",
+    "123": "РќР°РїСЂР°РІР»РµРЅРёРµ РЅР° РіРѕСЃРїРёС‚Р°Р»РёР·Р°С†РёСЋ РґР»СЏ РѕРєР°Р·Р°РЅРёСЏ Р’РњРџ",
+    "124": "РќР°РїСЂР°РІР»РµРЅРёРµ РЅР° РіРѕСЃРїРёС‚Р°Р»РёР·Р°С†РёСЋ РґР»СЏ РѕРєР°Р·Р°РЅРёСЏ СЃРїРµС†РёР°Р»РёР·РёСЂРѕРІР°РЅРЅРѕР№ РјРµРґРїРѕРјРѕС‰Рё",
+    "127": "РњРµРґРёС†РёРЅСЃРєРѕРµ СЃРІРёРґРµС‚РµР»СЊСЃС‚РІРѕ Рѕ РїРµСЂРёРЅР°С‚Р°Р»СЊРЅРѕР№ СЃРјРµСЂС‚Рё",
+    "129": "Р­РїРёРєСЂРёР· РїРѕ СЂРµР·СѓР»СЊС‚Р°С‚Р°Рј РґРёСЃРїР°РЅСЃРµСЂРёР·Р°С†РёРё / РїСЂРѕС„. РѕСЃРјРѕС‚СЂР°",
+    "131": "РќР°РїСЂР°РІР»РµРЅРёРµ Рє РјРµСЃС‚Сѓ Р»РµС‡РµРЅРёСЏ РґР»СЏ РїРѕР»СѓС‡РµРЅРёСЏ РјРµРґРёС†РёРЅСЃРєРѕР№ РїРѕРјРѕС‰Рё",
+    "132": "РўР°Р»РѕРЅ РЅР° РѕРєР°Р·Р°РЅРёРµ Р’РњРџ",
+    "133": "Р­С‚Р°РїРЅС‹Р№ СЌРїРёРєСЂРёР·",
+    "134": "РџСЂРµРґРѕРїРµСЂР°С†РёРѕРЅРЅС‹Р№ СЌРїРёРєСЂРёР·",
+    "135": "Р’С‹РїРёСЃРєР° РёР· РёСЃС‚РѕСЂРёРё Р±РѕР»РµР·РЅРё",
+    "136": "Р­РєСЃС‚СЂРµРЅРЅРѕРµ РёР·РІРµС‰РµРЅРёРµ Рѕ СЃР»СѓС‡Р°Рµ РѕСЃС‚СЂРѕРіРѕ РѕС‚СЂР°РІР»РµРЅРёСЏ С…РёРјРёС‡РµСЃРєРѕР№ СЌС‚РёРѕР»РѕРіРёРё",
+    "137": "РЎР°РЅР°С‚РѕСЂРЅРѕ-РєСѓСЂРѕСЂС‚РЅР°СЏ РєР°СЂС‚Р°",
+    "138": "РџСЂРѕРіСЂР°РјРјР° РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕРіРѕ РѕР±СЃР»РµРґРѕРІР°РЅРёСЏ РіСЂР°Р¶РґР°РЅРёРЅР° (Р¤Р‘РњРЎР­)",
+    "139": "РЎРїСЂР°РІРєР° Рѕ СЂРµР·СѓР»СЊС‚Р°С‚Р°С… С…РёРјРёРєРѕ-С‚РѕРєСЃРёРєРѕР»РѕРіРёС‡РµСЃРєРёС… РёСЃСЃР»РµРґРѕРІР°РЅРёР№",
+    "141": "Р›СЊРіРѕС‚РЅС‹Р№ СЂРµС†РµРїС‚ РЅР° Р»РµРєР°СЂСЃС‚РІРµРЅРЅС‹Р№ РїСЂРµРїР°СЂР°С‚ / РёР·Рґ. РјРµРґРЅР°Р·РЅР°С‡РµРЅРёСЏ",
+    "142": "Р—Р°РєР»СЋС‡РµРЅРёРµ РѕР± СѓСЃС‚Р°РЅРѕРІР»РµРЅРёРё С„Р°РєС‚Р° РїРѕСЃС‚РІР°РєС†РёРЅР°Р»СЊРЅРѕРіРѕ РѕСЃР»РѕР¶РЅРµРЅРёСЏ",
+    "143": "Р—Р°РєР»СЋС‡РµРЅРёРµ Рѕ РЅСѓР¶РґР°РµРјРѕСЃС‚Рё РїСЂРµСЃС‚Р°СЂРµР»РѕРіРѕ РіСЂР°Р¶РґР°РЅРёРЅР° РІ РїРѕСЃС‚РѕСЏРЅРЅРѕРј СѓС…РѕРґРµ",
+    "144": "Р—Р°РєР»СЋС‡РµРЅРёРµ РІСЂР°С‡РµР±РЅРѕР№ РєРѕРјРёСЃСЃРёРё Рѕ РЅСѓР¶РґР°РµРјРѕСЃС‚Рё РІРµС‚РµСЂР°РЅР° РІ РїСЂРѕС‚РµР·Р°С…",
+    "145": "РЎРїСЂР°РІРєР° Рѕ РїРѕРєР°Р·Р°РЅРёСЏС…, РїРѕ РєРѕС‚РѕСЂС‹Рј СЂРµР±РµРЅРѕРє РЅРµ РїРѕСЃРµС‰Р°РµС‚ Р”РћРЈ РІ РїРµСЂРёРѕРґ СѓС‡РµР±РЅРѕРіРѕ РїСЂРѕС†РµСЃСЃР°",
+    "146": "РўР°Р»РѕРЅ в„– 2 РЅР° РїРѕР»СѓС‡РµРЅРёРµ СЃРїРµС†С‚Р°Р»РѕРЅРѕРІ РЅР° РїСЂРѕРµР·Рґ Рє РјРµСЃС‚Сѓ Р»РµС‡РµРЅРёСЏ",
+    "147": "Р’С‹РїРёСЃРЅРѕР№ СЌРїРёРєСЂРёР· РІ СЃС‚Р°С†РёРѕРЅР°СЂРµ",
+    "148": "Р РµС†РµРїС‚ РЅР° Р»РµРєР°СЂСЃС‚РІРµРЅРЅС‹Р№ РїСЂРµРїР°СЂР°С‚",
+    "149": "РњРµРґР·Р°РєР»СЋС‡РµРЅРёРµ Рѕ РіСЂСѓРїРїРµ РґР»СЏ Р·Р°РЅСЏС‚РёР№ С„РёР·РєСѓР»СЊС‚СѓСЂРѕР№ РЅРµСЃРѕРІРµСЂС€РµРЅРЅРѕР»РµС‚РЅРµРіРѕ (Р°РєС‚СѓР°Р»СЊРЅРѕРµ)",
+    "150": "РњРµРґРёС†РёРЅСЃРєР°СЏ СЃРїСЂР°РІРєР° РІ Р±Р°СЃСЃРµР№РЅ (Р°РєС‚СѓР°Р»СЊРЅР°СЏ)",
+    "151": "РЎРїСЂР°РІРєР° РґР»СЏ РїРѕР»СѓС‡РµРЅРёСЏ РїСѓС‚РµРІРєРё РЅР° СЃР°РЅР°С‚РѕСЂРЅРѕ-РєСѓСЂРѕСЂС‚РЅРѕРµ Р»РµС‡РµРЅРёРµ",
+    "152": "РњРµРґРёС†РёРЅСЃРєРѕРµ Р·Р°РєР»СЋС‡РµРЅРёРµ РѕР± РѕС‚СЃСѓС‚СЃС‚РІРёРё РїСЂРѕС‚РёРІРѕРїРѕРєР°Р·Р°РЅРёР№ Рє Р·Р°РЅСЏС‚РёСЋ СЃРїРѕСЂС‚РѕРј",
+    "153": "РњРµРґРёС†РёРЅСЃРєР°СЏ СЃРїСЂР°РІРєР° (РґР»СЏ РІС‹РµР·Р¶Р°СЋС‰РµРіРѕ Р·Р° РіСЂР°РЅРёС†Сѓ)",
+    "154": "РЎРїСЂР°РІРєР° РѕР± РѕС‚СЃСѓС‚СЃС‚РІРёРё РєРѕРЅС‚Р°РєС‚РѕРІ СЃ РёРЅС„РµРєС†РёРѕРЅРЅС‹РјРё Р±РѕР»СЊРЅС‹РјРё",
+    "155": "РЎРїСЂР°РІРєР° РѕР± РѕС‚СЃСѓС‚СЃС‚РІРёРё РїСЂРѕС‚РёРІРѕРїРѕРєР°Р·Р°РЅРёР№ РґР»СЏ СЂР°Р±РѕС‚С‹ СЃ РіРѕСЃС‚Р°Р№РЅРѕР№",
+    "156": "Р—Р°РєР»СЋС‡РµРЅРёРµ РґР»СЏ РіСЂР°Р¶РґР°РЅ, РЅР°РјРµСЂРµРІР°СЋС‰РёС…СЃСЏ СѓСЃС‹РЅРѕРІРёС‚СЊ/СѓРґРѕС‡РµСЂРёС‚СЊ РґРµС‚РµР№",
+    "158": "Р’С‹РїРёСЃРєР° РёР· РїСЂРѕС‚РѕРєРѕР»Р° СЂРµС€РµРЅРёСЏ РІСЂР°С‡РµР±РЅРѕР№ РєРѕРјРёСЃСЃРёРё",
+    "159": "РЎС‚Р°С‚РёСЃС‚РёС‡РµСЃРєР°СЏ РєР°СЂС‚Р° РІС‹Р±С‹РІС€РµРіРѕ РёР· СЃС‚Р°С†РёРѕРЅР°СЂР°",
+    "160": "РџСЂРѕС‚РѕРєРѕР» РўРњРљ РґР»СЏ С‚СЂР°РЅСЃРіСЂР°РЅРёС‡РЅС‹С… СЂРµС€РµРЅРёР№",
+    "161": "РЎР°РЅР°С‚РѕСЂРЅРѕ-РєСѓСЂРѕСЂС‚РЅР°СЏ РєР°СЂС‚Р° РґР»СЏ РґРµС‚РµР№",
+    "163": "РџСЂРѕС‚РѕРєРѕР» РјРµРґРёС†РёРЅСЃРєРѕР№ РјР°РЅРёРїСѓР»СЏС†РёРё",
+    "164": "Р­РєСЃС‚СЂРµРЅРЅРѕРµ РёР·РІРµС‰РµРЅРёРµ РѕР± РёРЅС„РµРєС†РёРѕРЅРЅРѕРј Р·Р°Р±РѕР»РµРІР°РЅРёРё (Р°РєС‚СѓР°Р»СЊРЅРѕРµ)",
+    "169": "РЎРїСЂР°РІРєР° Рѕ РІСЂРµРјРµРЅРЅРѕР№ РЅРµС‚СЂСѓРґРѕСЃРїРѕСЃРѕР±РЅРѕСЃС‚Рё СЃС‚СѓРґРµРЅС‚Р° (СЂРµРґ. 4)",
+    "170": "РЎРµСЂС‚РёС„РёРєР°С‚ РїСЂРѕС„РёР»Р°РєС‚РёС‡РµСЃРєРёС… РїСЂРёРІРёРІРѕРє (СЂРµРґ. 2)",
+    "171": "РњРµРґР·Р°РєР»СЋС‡РµРЅРёРµ Рѕ РЅР°Р»РёС‡РёРё/РѕС‚СЃСѓС‚СЃС‚РІРёРё РїСЂРѕС‚РёРІРѕРїРѕРєР°Р·Р°РЅРёР№ Сѓ РІРѕРґРёС‚РµР»РµР№ РўРЎ",
+    "172": "РЎРїСЂР°РІРєР° Рѕ СЃРѕСЃС‚РѕСЏРЅРёРё РЅР° СѓС‡РµС‚Рµ РІ РґРёСЃРїР°РЅСЃРµСЂРµ"
   };
 
   constructor(private readonly config: AppConfig["postgres"]) {
@@ -470,8 +470,8 @@ export class PostgresService {
         code: "authentication_failed",
         message,
         userHint:
-          `Проверьте пользователя/пароль PostgreSQL для существующего pgdata. ` +
-          `Переменные окружения не переопределяют уже созданных пользователей.`
+          `РџСЂРѕРІРµСЂСЊС‚Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ/РїР°СЂРѕР»СЊ PostgreSQL РґР»СЏ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ pgdata. ` +
+          `РџРµСЂРµРјРµРЅРЅС‹Рµ РѕРєСЂСѓР¶РµРЅРёСЏ РЅРµ РїРµСЂРµРѕРїСЂРµРґРµР»СЏСЋС‚ СѓР¶Рµ СЃРѕР·РґР°РЅРЅС‹С… РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№.`
       };
     }
 
@@ -479,7 +479,7 @@ export class PostgresService {
       return {
         code: "database_unavailable",
         message,
-        userHint: "Проверьте доступность контейнера db, имя базы и сетевые параметры подключения."
+        userHint: "РџСЂРѕРІРµСЂСЊС‚Рµ РґРѕСЃС‚СѓРїРЅРѕСЃС‚СЊ РєРѕРЅС‚РµР№РЅРµСЂР° db, РёРјСЏ Р±Р°Р·С‹ Рё СЃРµС‚РµРІС‹Рµ РїР°СЂР°РјРµС‚СЂС‹ РїРѕРґРєР»СЋС‡РµРЅРёСЏ."
       };
     }
 
@@ -487,7 +487,7 @@ export class PostgresService {
       return {
         code: "schema_migration_failed",
         message,
-        userHint: "Проверьте состояние существующего pgdata и консистентность исторических данных перед миграцией."
+        userHint: "РџСЂРѕРІРµСЂСЊС‚Рµ СЃРѕСЃС‚РѕСЏРЅРёРµ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ pgdata Рё РєРѕРЅСЃРёСЃС‚РµРЅС‚РЅРѕСЃС‚СЊ РёСЃС‚РѕСЂРёС‡РµСЃРєРёС… РґР°РЅРЅС‹С… РїРµСЂРµРґ РјРёРіСЂР°С†РёРµР№."
       };
     }
 
@@ -578,44 +578,46 @@ export class PostgresService {
   }
 
   private async upsertClinic(client: PoolClient, record: StarSchemaLogRecord): Promise<number> {
-    if (record.clinic.moDomen) {
-      const existingClinicId = await this.findClinicIdByDomain(client, record.clinic.moDomen);
+    const existingClinicId =
+      (record.clinic.jid !== 0 ? await this.findClinicIdByJid(client, record.clinic.jid) : null) ??
+      (record.clinic.moDomen ? await this.findClinicIdByDomain(client, record.clinic.moDomen) : null);
 
-      if (existingClinicId !== null) {
-        await client.query(
-          `
-            UPDATE ${this.schemaName}.dim_clinics
-            SET
-              jid = CASE WHEN $2 <> 0 THEN $2 ELSE jid END,
-              mo_uid = CASE
-                WHEN is_verified = FALSE AND $5 = TRUE THEN $3
-                ELSE mo_uid
-              END,
-              jname = CASE
-                WHEN $4::VARCHAR(255) IS NOT NULL AND ($5 = TRUE OR jname IS NULL OR jname LIKE 'Неизвестная клиника (%)')
-                  THEN $4::VARCHAR(255)
-                ELSE jname
-              END,
-              is_verified = is_verified OR $5
-            WHERE clinic_id = $1
-          `,
-          [
-            existingClinicId,
-            record.clinic.jid,
-            record.clinic.moUid,
-            record.clinic.jname,
-            record.clinic.isVerified
-          ]
-        );
+    if (existingClinicId !== null) {
+      await client.query(
+        `
+          UPDATE ${this.schemaName}.dim_clinics
+          SET
+            jid = CASE WHEN $2 <> 0 THEN $2 ELSE jid END,
+            mo_uid = CASE
+              WHEN is_verified = FALSE AND $5 = TRUE THEN $3
+              ELSE mo_uid
+            END,
+            mo_domen = COALESCE($6, mo_domen),
+            jname = CASE
+              WHEN $4::VARCHAR(255) IS NOT NULL AND ($5 = TRUE OR jname IS NULL OR jname LIKE 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РєР»РёРЅРёРєР° (%)')
+                THEN $4::VARCHAR(255)
+              ELSE jname
+            END,
+            is_verified = is_verified OR $5
+          WHERE clinic_id = $1
+        `,
+        [
+          existingClinicId,
+          record.clinic.jid,
+          record.clinic.moUid,
+          record.clinic.jname,
+          record.clinic.isVerified,
+          record.clinic.moDomen
+        ]
+      );
 
-        return existingClinicId;
-      }
+      return existingClinicId;
     }
 
     const effectiveMoUid = record.clinic.isVerified ? record.clinic.moUid : `ghost-${record.clinic.moDomen ?? record.clinic.moUid}`;
     const effectiveJname = record.clinic.isVerified
       ? record.clinic.jname
-      : `Неизвестная клиника (${record.clinic.moDomen ?? record.clinic.moUid})`;
+      : `РќРµРёР·РІРµСЃС‚РЅР°СЏ РєР»РёРЅРёРєР° (${record.clinic.moDomen ?? record.clinic.moUid})`;
 
     const result = await client.query<{ clinic_id: number }>(
       `
@@ -761,7 +763,7 @@ export class PostgresService {
     await client.query(`
       UPDATE ${this.schemaName}.dim_clinics
       SET is_verified = CASE
-        WHEN jname IS NOT NULL AND jname NOT LIKE 'Неизвестная клиника (%)' THEN TRUE
+        WHEN jname IS NOT NULL AND jname NOT LIKE 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РєР»РёРЅРёРєР° (%)' THEN TRUE
         ELSE COALESCE(is_verified, FALSE)
       END
     `);
@@ -837,8 +839,8 @@ export class PostgresService {
   }
 
   private async normalizeErrorCategories(client: PoolClient): Promise<void> {
-    const networkAliases = ["network", "Сетевая", "РЎРµС‚РµРІР°СЏ"];
-    const asyncAliases = ["async", "Асинхронная", "РђСЃРёРЅС…СЂРѕРЅРЅР°СЏ"];
+    const networkAliases = ["network", "РЎРµС‚РµРІР°СЏ", "Р РЋР ВµРЎвЂљР ВµР Р†Р В°РЎРЏ"];
+    const asyncAliases = ["async", "РђСЃРёРЅС…СЂРѕРЅРЅР°СЏ", "Р С’РЎРѓР С‘Р Р…РЎвЂ¦РЎР‚Р С•Р Р…Р Р…Р В°РЎРЏ"];
 
     await client.query(
       `
@@ -972,6 +974,7 @@ export class PostgresService {
   private async createAnalyticsViews(client: PoolClient): Promise<void> {
     await this.dropAnalyticsViews(client);
 
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_daily_summary CASCADE`);
     await client.query(`
       CREATE OR REPLACE VIEW ${this.schemaName}.view_daily_summary AS
       SELECT
@@ -990,6 +993,7 @@ export class PostgresService {
         dc.mo_uid,
         COALESCE(ds.description, ds.kind::text)
     `);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_error_analysis CASCADE`);
     await client.query(`
       CREATE OR REPLACE VIEW ${this.schemaName}.view_error_analysis AS
       SELECT
@@ -997,9 +1001,9 @@ export class PostgresService {
         ft.error_category AS category,
         COUNT(*) AS occurrence_count,
         CASE
-          WHEN ft.error_category = 'network' THEN 'Сетевая'
-          WHEN ft.error_category = 'async' THEN 'Асинхронная'
-          ELSE 'Прочая'
+          WHEN ft.error_category = 'network' THEN 'РЎРµС‚РµРІР°СЏ'
+          WHEN ft.error_category = 'async' THEN 'РђСЃРёРЅС…СЂРѕРЅРЅР°СЏ'
+          ELSE 'РџСЂРѕС‡Р°СЏ'
         END AS category_ru,
         MIN(ft.transaction_date) AS first_seen_at,
         MAX(ft.transaction_date) AS last_seen_at
@@ -1010,6 +1014,7 @@ export class PostgresService {
         ft.error_text,
         ft.error_category
     `);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_clinic_sla CASCADE`);
     await client.query(`
       CREATE OR REPLACE VIEW ${this.schemaName}.view_clinic_sla AS
       WITH clinic_last_response AS (
@@ -1045,6 +1050,7 @@ export class PostgresService {
           AND description <> kind
           AND description LIKE '/%'
       `);
+      await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_unified_analytics CASCADE`);
       await client.query(`
         CREATE OR REPLACE VIEW ${this.schemaName}.v_unified_analytics AS
       SELECT
@@ -1060,7 +1066,14 @@ export class PostgresService {
         dc.jid,
         dc.jname,
         dc.is_verified,
-        COALESCE(NULLIF(TRIM(dc.jname), ''), ee.hostname, dc.mo_domen, dc.mo_uid) AS clinic_display_name,
+        COALESCE(
+          NULLIF(TRIM(dc.jname), ''),
+          CASE
+            WHEN dc.jid IS NOT NULL AND dc.jid <> 0 THEN 'Клиника JID: ' || dc.jid::TEXT
+            ELSE NULL
+          END,
+          'Неизвестная клиника'
+        ) AS clinic_display_name,
         dc.mo_uid,
         dc.mo_domen,
         ft.service_id,
@@ -1071,24 +1084,24 @@ export class PostgresService {
         COALESCE(${this.buildSemdNameSql("ds.kind")}, ds.description, ds.service_type, ds.kind) AS service_display_name,
         ft.error_category,
         CASE
-          WHEN ft.error_category = 'network' THEN 'Сетевая'
-          WHEN ft.error_category = 'async' THEN 'Асинхронная'
+          WHEN ft.error_category = 'network' THEN 'РЎРµС‚РµРІР°СЏ'
+          WHEN ft.error_category = 'async' THEN 'РђСЃРёРЅС…СЂРѕРЅРЅР°СЏ'
           WHEN ft.error_category IS NULL THEN NULL
-          ELSE 'Прочая'
+          ELSE 'РџСЂРѕС‡Р°СЏ'
         END AS error_category_ru,
         CASE
           WHEN ft.status <> 'error' THEN NULL
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'auth|authentication|авторизац|логин|парол|token|401|403'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'auth|authentication|Р°РІС‚РѕСЂРёР·Р°С†|Р»РѕРіРёРЅ|РїР°СЂРѕР»|token|401|403'
             THEN 'auth'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'timeout|timed out|таймаут'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'timeout|timed out|С‚Р°Р№РјР°СѓС‚'
             THEN 'timeout'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'connection refused|connect failed|could not connect|соединени'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'connection refused|connect failed|could not connect|СЃРѕРµРґРёРЅРµРЅРё'
             THEN 'connection_refused'
           WHEN COALESCE(ee.error_text, ft.error_text) ~* 'proxy'
             THEN 'proxy'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'egisz|егисз'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'egisz|РµРіРёСЃР·'
             THEN 'egisz'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'validation|invalid|некоррект|ошибка формата'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'validation|invalid|РЅРµРєРѕСЂСЂРµРєС‚|РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°'
             THEN 'validation'
           ELSE 'unknown'
         END AS error_subcategory,
@@ -1119,38 +1132,39 @@ export class PostgresService {
         ON dec.error_category = COALESCE(
           CASE
             WHEN ft.status <> 'error' THEN NULL
-            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'auth|authentication|авторизац|логин|парол|token|401|403'
+            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'auth|authentication|Р°РІС‚РѕСЂРёР·Р°С†|Р»РѕРіРёРЅ|РїР°СЂРѕР»|token|401|403'
               THEN 'other'
-            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'timeout|timed out|таймаут'
+            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'timeout|timed out|С‚Р°Р№РјР°СѓС‚'
               THEN 'other'
-            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'connection refused|connect failed|could not connect|соединени'
+            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'connection refused|connect failed|could not connect|СЃРѕРµРґРёРЅРµРЅРё'
               THEN 'other'
             WHEN COALESCE(ee.error_text, ft.error_text) ~* 'proxy'
               THEN 'other'
-            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'egisz|егисз'
+            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'egisz|РµРіРёСЃР·'
               THEN 'other'
-            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'validation|invalid|некоррект|ошибка формата'
+            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'validation|invalid|РЅРµРєРѕСЂСЂРµРєС‚|РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°'
               THEN 'other'
             ELSE ft.error_category
           END,
           'other'
         ) AND dec.error_subcategory = CASE
           WHEN ft.status <> 'error' THEN NULL
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'auth|authentication|авторизац|логин|парол|token|401|403'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'auth|authentication|Р°РІС‚РѕСЂРёР·Р°С†|Р»РѕРіРёРЅ|РїР°СЂРѕР»|token|401|403'
             THEN 'auth'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'timeout|timed out|таймаут'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'timeout|timed out|С‚Р°Р№РјР°СѓС‚'
             THEN 'timeout'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'connection refused|connect failed|could not connect|соединени'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'connection refused|connect failed|could not connect|СЃРѕРµРґРёРЅРµРЅРё'
             THEN 'connection_refused'
           WHEN COALESCE(ee.error_text, ft.error_text) ~* 'proxy'
             THEN 'proxy'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'egisz|егисз'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'egisz|РµРіРёСЃР·'
             THEN 'egisz'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'validation|invalid|некоррект|ошибка формата'
+          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'validation|invalid|РЅРµРєРѕСЂСЂРµРєС‚|РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°'
             THEN 'validation'
           ELSE 'unknown'
         END
     `);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_error_fingerprints CASCADE`);
     await client.query(`
       CREATE OR REPLACE VIEW ${this.schemaName}.v_error_fingerprints AS
       SELECT
@@ -1172,6 +1186,7 @@ export class PostgresService {
         ua.error_category_ru,
         ua.error_subcategory
     `);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_clinic_hourly_sla CASCADE`);
     await client.query(`
       CREATE OR REPLACE VIEW ${this.schemaName}.v_clinic_hourly_sla AS
       SELECT
@@ -1197,6 +1212,7 @@ export class PostgresService {
         ua.clinic_display_name,
         ua.mo_uid
     `);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_service_hourly_health CASCADE`);
     await client.query(`
       CREATE OR REPLACE VIEW ${this.schemaName}.v_service_hourly_health AS
       SELECT
@@ -1221,6 +1237,7 @@ export class PostgresService {
         ua.service_display_name
     `);
 
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_support_economic_metrics CASCADE`);
     await client.query(`
       CREATE OR REPLACE VIEW ${this.schemaName}.v_support_economic_metrics AS
       SELECT
@@ -1257,6 +1274,7 @@ export class PostgresService {
         ua.mo_domen
     `);
 
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_vpn_node_stability CASCADE`);
     await client.query(`
       CREATE OR REPLACE VIEW ${this.schemaName}.v_vpn_node_stability AS
       WITH hourly_stats AS (
@@ -1329,6 +1347,21 @@ export class PostgresService {
     return result.rows[0]?.clinic_id ?? null;
   }
 
+  private async findClinicIdByJid(client: PoolClient, jid: number): Promise<number | null> {
+    const result = await client.query<{ clinic_id: number }>(
+      `
+        SELECT clinic_id
+        FROM ${this.schemaName}.dim_clinics
+        WHERE jid = $1
+        ORDER BY is_verified DESC, clinic_id ASC
+        LIMIT 1
+      `,
+      [jid]
+    );
+
+    return result.rows[0]?.clinic_id ?? null;
+  }
+
   private async rollbackQuietly(client: PoolClient): Promise<void> {
     try {
       await client.query("ROLLBACK");
@@ -1383,3 +1416,4 @@ export class PostgresService {
     );
   }
 }
+

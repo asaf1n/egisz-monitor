@@ -14,6 +14,10 @@ import {
   VpnNodeRow
 } from "../types";
 
+function buildQueryUrl(path: string, period?: string): string {
+  return period ? `${path}?period=${encodeURIComponent(period)}` : path;
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url, {
     method: "GET",
@@ -58,12 +62,12 @@ async function postJson<TResponse, TPayload>(url: string, payload: TPayload): Pr
   return data as TResponse;
 }
 
-export async function fetchDashboardKpi(): Promise<DashboardKPI> {
+export async function fetchDashboardKpi(period = '24h'): Promise<DashboardKPI> {
   const payload = await getJson<{
     totalSubmissions: number;
     successRate: number;
     uniqueErrors: number;
-  }>("/api/reports/kpi");
+  }>(buildQueryUrl('/api/reports/kpi', period));
 
   return {
     total: payload.totalSubmissions,
@@ -72,11 +76,11 @@ export async function fetchDashboardKpi(): Promise<DashboardKPI> {
   };
 }
 
-export async function fetchErrorsPie(): Promise<ErrorPieData[]> {
-  return getJson<ErrorPieData[]>("/api/reports/errors-pie");
+export async function fetchErrorsPie(period = "24h"): Promise<ErrorPieData[]> {
+  return getJson<ErrorPieData[]>(buildQueryUrl("/api/reports/errors-pie", period));
 }
 
-export async function fetchStatusHeatmap(): Promise<StatusHeatmapRow[]> {
+export async function fetchStatusHeatmap(period = "24h"): Promise<StatusHeatmapRow[]> {
   const payload = await getJson<
     Array<{
       clinicDisplayName: string;
@@ -85,7 +89,7 @@ export async function fetchStatusHeatmap(): Promise<StatusHeatmapRow[]> {
       lastActivityAt: string;
       status: "green" | "yellow" | "red";
     }>
-  >("/api/reports/status-heatmap");
+  >(buildQueryUrl("/api/reports/status-heatmap", period));
 
   return payload.map((row) => ({
     clinicDisplayName: row.clinicDisplayName,
@@ -96,24 +100,24 @@ export async function fetchStatusHeatmap(): Promise<StatusHeatmapRow[]> {
   }));
 }
 
-export async function fetchHourlyTrend(): Promise<HourlyTrendRow[]> {
-  return getJson<HourlyTrendRow[]>("/api/reports/hourly-trend");
+export async function fetchHourlyTrend(period = "24h"): Promise<HourlyTrendRow[]> {
+  return getJson<HourlyTrendRow[]>(buildQueryUrl("/api/reports/hourly-trend", period));
 }
 
-export async function fetchClinicErrors(): Promise<ClinicErrorRow[]> {
-  return getJson<ClinicErrorRow[]>("/api/reports/clinic-errors");
+export async function fetchClinicErrors(period = "24h"): Promise<ClinicErrorRow[]> {
+  return getJson<ClinicErrorRow[]>(buildQueryUrl("/api/reports/clinic-errors", period));
 }
 
-export async function fetchServiceHealth(): Promise<ServiceHealthRow[]> {
-  return getJson<ServiceHealthRow[]>("/api/reports/service-health");
+export async function fetchServiceHealth(period = "24h"): Promise<ServiceHealthRow[]> {
+  return getJson<ServiceHealthRow[]>(buildQueryUrl("/api/reports/service-health", period));
 }
 
-export async function fetchCostlyClinics(): Promise<CostlyClinicRow[]> {
-  return getJson<CostlyClinicRow[]>("/api/reports/costly-clinics");
+export async function fetchCostlyClinics(period = "24h"): Promise<CostlyClinicRow[]> {
+  return getJson<CostlyClinicRow[]>(buildQueryUrl("/api/reports/costly-clinics", period));
 }
 
-export async function fetchVpnNodeStatus(): Promise<VpnNodeRow[]> {
-  return getJson<VpnNodeRow[]>("/api/reports/vpn-node-status");
+export async function fetchVpnNodeStatus(period = "24h"): Promise<VpnNodeRow[]> {
+  return getJson<VpnNodeRow[]>(buildQueryUrl("/api/reports/vpn-node-status", period));
 }
 
 export async function runEtlSync(): Promise<EtlRunStatus> {
