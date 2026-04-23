@@ -50,18 +50,21 @@ export interface FirebirdLicenseLogRow {
   LOGMODE?: number | string | null;
   LOGTEXT: string | null;
   MSGTEXT: string | null;
+  MESSAGE_MSGTEXT?: string | null;
   LOG_CREATED_AT: Date | string | null;
   LOGDATE?: Date | string | null;
   MODIFYDATE?: Date | string | null;
   URI?: string | null;
   ACTION?: string | null;
   METHOD?: string | null;
+  PARENTLOGID?: number | string | null;
   GRPID?: number | string | null;
   JID?: number | string | null;
   JNAME?: string | null;
   MO_UID?: string | null;
   MO_DOMEN?: string | null;
   REPLYTO?: string | null;
+  DOCUMENTID?: string | null;
   KIND?: number | string | null;
   SERVICE_TYPE?: number | string | null;
   [key: string]: unknown;
@@ -86,6 +89,8 @@ export interface FactTransactionRecord {
   transactionDate: Date;
   status: "success" | "error";
   errorCategory: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
   errorText: string | null;
 }
 
@@ -115,6 +120,14 @@ export interface EtlRunStatus {
   status: "idle" | "running" | "success" | "failed";
   stage: "idle" | "extracting" | "parsing" | "loading" | "success" | "failed";
   message: string;
+  progress: {
+    current: number;
+    total: number;
+    percent: number;
+  };
+  progressPercent: number;
+  processedRows: number;
+  totalRows: number;
   startedAt: string | null;
   finishedAt: string | null;
   result: EtlRunResult | null;
@@ -125,6 +138,25 @@ export interface DatabaseStatus {
   firebird: "ok" | "error";
   postgres: "ok" | "error";
   details: string[];
+}
+
+export interface SyncStatus {
+  totalRecords: number;
+  successRecords: number;
+  errorRecords: number;
+  lastSyncDate: string | null;
+  progress?: {
+    current: number;
+    total: number;
+    percent: number;
+  };
+  progressPercent?: number;
+  processedRows?: number;
+  totalRows?: number;
+  etlStatus?: EtlRunStatus["status"];
+  etlStage?: EtlRunStatus["stage"];
+  degraded?: boolean;
+  message?: string;
 }
 
 export interface ClinicDirectoryIssue {

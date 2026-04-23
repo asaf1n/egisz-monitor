@@ -1,5 +1,3 @@
-version: '3.9'
-
 # ============================================================================
 # EGISZ-Monitor Production Docker Compose (v1.1.0)
 # Pre-built images, ready for deployment
@@ -18,14 +16,14 @@ services:
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-egisz} -d ${DB_NAME:-egisz_monitor}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-egisz} -d ${DB_NAME:-egisz_monitor} && pg_isready -U ${MB_DB_USER:-metabase} -d ${MB_DB_NAME:-metabase_db}"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 20s
     restart: unless-stopped
     networks:
       - app-network
@@ -56,6 +54,10 @@ services:
       FIREBIRD_USER: ${FIREBIRD_USER:-sysdba}
       FIREBIRD_PASSWORD: ${FIREBIRD_PASSWORD:-masterkey}
       FIREBIRD_PAGE_SIZE: ${FIREBIRD_PAGE_SIZE:-4096}
+      FIREBIRD_ETL_PAGE_SIZE: ${FIREBIRD_ETL_PAGE_SIZE:-200}
+      FIREBIRD_ATTACH_TIMEOUT_MS: ${FIREBIRD_ATTACH_TIMEOUT_MS:-8000}
+      FIREBIRD_QUERY_TIMEOUT_MS: ${FIREBIRD_QUERY_TIMEOUT_MS:-12000}
+      FIREBIRD_ETL_QUERY_TIMEOUT_MS: ${FIREBIRD_ETL_QUERY_TIMEOUT_MS:-30000}
     depends_on:
       db:
         condition: service_healthy
@@ -118,7 +120,7 @@ services:
       - "${METABASE_PORT:-3001}:3000"
     environment:
       MB_DB_TYPE: postgres
-      MB_DB_DBNAME: ${MB_DB_NAME:-metabase}
+      MB_DB_DBNAME: ${MB_DB_NAME:-metabase_db}
       MB_DB_PORT: 5432
       MB_DB_USER: ${MB_DB_USER:-metabase}
       MB_DB_PASS: ${MB_DB_PASS:-metabase}
@@ -180,7 +182,7 @@ services:
       service: metabase-public
 
 volumes:
-  pgdata:
+  postgres_data:
     driver: local
   metabase_public:
     driver: local

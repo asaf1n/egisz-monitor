@@ -91,15 +91,24 @@ if [ "${HAS_USER_SETUP}" != "true" ]; then
 fi
 
 if [ -x /app/setup-dashboards.sh ]; then
-  log_info "Running dashboard provisioning..."
-  ADMIN_EMAIL="${ADMIN_EMAIL}" \
-  ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
-  DB_NAME="${APP_DB_NAME}" \
-  DB_DISPLAY_NAME="${APP_DB_DISPLAY_NAME}" \
-  DB_USER="${APP_DB_USER}" \
-  DB_PASSWORD="${APP_DB_PASSWORD}" \
-  METABASE_URL="${MB_URL}" \
-  /app/setup-dashboards.sh
+  log_info "Validating application database schema..."
+  # Verify key tables exist using proper quoting
+  SCHEMA_SQL="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('dim_clinics', 'dim_services', 'fact_transactions', 'v_unified_analytics');"
+  SCHEMA_CHECK="$(PGPASSWORD="${APP_DB_PASSWORD}" psql -h db -U "${APP_DB_USER}" -d "${APP_DB_NAME}" -tc "${SCHEMA_SQL}" 2>/dev/null || echo '0')"
+  
+  if [ "${SCHEMA_CHECK}" -ge 4 ]; then
+    log_info "Application schema validated. Running dashboard provisioning..."
+    ADMIN_EMAIL="${ADMIN_EMAIL}" \
+    ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+    DB_NAME="${APP_DB_NAME}" \
+    DB_DISPLAY_NAME="${APP_DB_DISPLAY_NAME}" \
+    DB_USER="${APP_DB_USER}" \
+    DB_PASSWORD="${APP_DB_PASSWORD}" \
+    METABASE_URL="${MB_URL}" \
+    /app/setup-dashboards.sh
+  else
+    echo "[provision] Warning: Application database schema not fully initialized. Skipping dashboard provisioning."
+  fi
 fi
 
 log_info "Authenticating in Metabase..."

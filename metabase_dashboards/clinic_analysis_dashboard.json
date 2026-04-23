@@ -1,102 +1,65 @@
 {
-  "name": "Анализ клиник EGISZ",
-  "description": "Мониторинг состояния медицинских организаций: проблемные клиники, активность по сервисам и список неверифицированных записей, требующих внимания.",
+  "name": "Статистика отправки: подключение и отказы",
+  "description": "Расширенный бизнес-контур: динамика подключений, рейтинг KIND и доля автоматических отказов.",
   "collection_id": null,
   "cards": [
     {
-      "name": "Надежность клиник (топ проблемных)",
-      "description": "Таблица клиник с наибольшим количеством ошибок за выбранный период. Используется для быстрого выявления проблемных МО.",
+      "name": "Динамика подключений",
+      "description": "Сколько уникальных JID отправили хотя бы один успешный документ по неделям за 90 дней.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT\n    COALESCE(NULLIF(TRIM(ua.jname), ''), ua.clinic_display_name) AS \"Название клиники\",\n    ua.mo_uid AS \"UID МО\",\n    COUNT(*)::bigint AS \"Общее количество\",\n    COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Количество ошибок\",\n    COALESCE(\n        ROUND(\n            100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0),\n            2\n        ),\n        0\n    ) AS \"Процент успешности\",\n    MAX(ua.transaction_date) FILTER (WHERE ua.is_error) AS \"Последняя ошибка\"\nFROM public.v_unified_analytics AS ua\nWHERE ua.transaction_date >= NOW() - INTERVAL '7 days'\nGROUP BY\n    COALESCE(NULLIF(TRIM(ua.jname), ''), ua.clinic_display_name),\n    ua.mo_uid\nHAVING COUNT(*) FILTER (WHERE ua.is_error) > 0\nORDER BY 4 DESC, 6 DESC NULLS LAST, 1 ASC, ua.mo_uid ASC\nLIMIT 20;"
+          "query": "SELECT date_trunc('week', ua.transaction_date)::date AS \"Неделя\", COUNT(DISTINCT ua.jid)::bigint AS \"Уникальных JID\" FROM public.v_unified_analytics ua WHERE ua.is_success AND ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '90 days' GROUP BY 1 ORDER BY 1 ASC;"
         },
         "database": 1
       },
-      "display": "table",
+      "display": "line",
       "visualization_settings": {
-        "table.pivot_column": null,
-        "table.cell_column": null
+        "graph.dimensions": ["Неделя"],
+        "graph.metrics": ["Уникальных JID"]
       },
       "sizeX": 12,
-      "sizeY": 8,
+      "sizeY": 4,
       "row": 0,
       "col": 0
     },
     {
-      "name": "Тепловая карта активности",
-      "description": "Состояние трафика по клиникам и сервисам. Помогает быстро увидеть свежую активность и возможные зоны простоя.",
+      "name": "Рейтинг типов СЭМД",
+      "description": "Какие коды KIND наиболее востребованы по объему трафика за 30 дней.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "WITH latest_activity AS (\n    SELECT\n        ua.mo_uid,\n        ua.service_display_name AS service_name,\n        MAX(ua.transaction_date) AS last_activity_at\n    FROM public.v_unified_analytics AS ua\n    GROUP BY ua.mo_uid, ua.service_display_name\n),\nclinic_map AS (\n    SELECT DISTINCT\n        ua.mo_uid,\n        ua.clinic_display_name,\n        ua.service_display_name AS service_name\n    FROM public.v_unified_analytics AS ua\n)\nSELECT\n    cm.clinic_display_name AS \"Название клиники\",\n    la.mo_uid AS \"UID МО\",\n    la.service_name AS \"Сервис\",\n    la.last_activity_at AS \"Последняя активность\",\n    CASE\n        WHEN la.last_activity_at IS NULL THEN 'red'\n        WHEN la.last_activity_at >= NOW() - INTERVAL '1 hour' THEN 'green'\n        WHEN la.last_activity_at >= NOW() - INTERVAL '24 hours' THEN 'yellow'\n        ELSE 'red'\n    END AS \"Статус трафика\"\nFROM latest_activity AS la\nJOIN clinic_map AS cm\n    ON cm.mo_uid = la.mo_uid\n   AND cm.service_name = la.service_name\nORDER BY cm.clinic_display_name ASC, la.service_name ASC;"
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_type), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"KIND\", COUNT(*)::bigint AS \"Трафик\" FROM public.v_unified_analytics ua WHERE ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY \"Трафик\" DESC LIMIT 20;"
         },
         "database": 1
       },
-      "display": "table",
+      "display": "bar",
       "visualization_settings": {
-        "table.pivot_column": null,
-        "table.cell_column": null,
-        "table.column_formatting": [
-          {
-            "columns": ["Статус трафика"],
-            "type": "single",
-            "operator": "=",
-            "value": "green",
-            "color": "#00FF00",
-            "highlight_row": false
-          },
-          {
-            "columns": ["Статус трафика"],
-            "type": "single",
-            "operator": "=",
-            "value": "yellow",
-            "color": "#FFFF00",
-            "highlight_row": false
-          },
-          {
-            "columns": ["Статус трафика"],
-            "type": "single",
-            "operator": "=",
-            "value": "red",
-            "color": "#FF0000",
-            "highlight_row": false
-          }
-        ]
+        "graph.dimensions": ["KIND"],
+        "graph.metrics": ["Трафик"]
       },
       "sizeX": 12,
-      "sizeY": 8,
+      "sizeY": 4,
       "row": 0,
       "col": 12
     },
     {
-      "name": "Непроверенные клиники",
-      "description": "Список клиник без подтверждённой верификации. Используется как рабочий backlog для проверки и очистки справочника.",
+      "name": "Доля автоматических отказов",
+      "description": "Процент ошибок категорий «Ошибка связи» и «Ошибка валидации XSD» от общего объема.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT\n    ua.clinic_id AS \"ID клиники\",\n    ua.clinic_display_name AS \"Название клиники\",\n    ua.mo_uid AS \"UID МО\",\n    ua.mo_domen AS \"Домен МО\",\n    ua.is_verified AS \"Проверена\",\n    COUNT(*)::bigint AS \"Общее количество запросов\",\n    MAX(ua.transaction_date) AS \"Последняя активность\",\n    COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Количество ошибок\"\nFROM public.v_unified_analytics AS ua\nWHERE COALESCE(ua.is_verified, false) = false\nGROUP BY\n    ua.clinic_id,\n    ua.clinic_display_name,\n    ua.mo_uid,\n    ua.mo_domen,\n    ua.is_verified\nORDER BY 7 DESC, 8 DESC, ua.clinic_display_name ASC;"
+          "query": "WITH totals AS (SELECT COUNT(*)::numeric AS total_count FROM public.v_unified_analytics ua WHERE ua.transaction_date >= NOW() - INTERVAL '30 days'), debt AS (SELECT COUNT(*)::numeric AS debt_count FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' AND ua.error_category IN ('Ошибка связи', 'Ошибка валидации XSD')) SELECT totals.total_count::bigint AS \"Всего транзакций\", debt.debt_count::bigint AS \"Автоматические отказы\", COALESCE(ROUND(100.0 * debt.debt_count / NULLIF(totals.total_count, 0), 2), 0) AS \"Доля, %\" FROM totals CROSS JOIN debt;"
         },
         "database": 1
       },
       "display": "table",
-      "visualization_settings": {
-        "table.pivot_column": null,
-        "table.cell_column": null
-      },
+      "visualization_settings": {},
       "sizeX": 24,
-      "sizeY": 7,
-      "row": 8,
+      "sizeY": 3,
+      "row": 4,
       "col": 0
     }
   ],
-  "parameters": [
-    {
-      "name": "Период анализа",
-      "slug": "period",
-      "id": "period_param",
-      "type": "date/range",
-      "default": ["7 days ago", "today"]
-    }
-  ]
+  "parameters": []
 }

@@ -21,8 +21,21 @@ async function bootstrap(): Promise<void> {
 
   app.use(express.json());
 
-  app.get("/health", (_request, response) => {
-    response.status(200).json({ status: "ok" });
+  app.get("/health", async (_request, response) => {
+    try {
+      const result = await postgresService.query('SELECT 1');
+      if (!result || !result.rows) {
+        response.status(503).json({ status: "unhealthy", reason: "PostgreSQL query failed" });
+        return;
+      }
+      response.status(200).json({ status: "healthy", postgres: "connected" });
+    } catch (error) {
+      response.status(503).json({ 
+        status: "unhealthy", 
+        reason: "PostgreSQL connection failed",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
   });
 
   app.get("/api/database/check", databaseController.checkConnections);
@@ -45,6 +58,12 @@ async function bootstrap(): Promise<void> {
 
   process.on("SIGINT", () => void shutdown());
   process.on("SIGTERM", () => void shutdown());
+  process.on("unhandledRejection", (reason) => {
+    console.error("Unhandled promise rejection", reason);
+  });
+  process.on("uncaughtException", (error) => {
+    console.error("Uncaught exception", error);
+  });
 }
 
 bootstrap().catch((error) => {

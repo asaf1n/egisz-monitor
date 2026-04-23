@@ -9,11 +9,11 @@ BEGIN
   END IF;
 END $$;
 
-SELECT 'CREATE DATABASE metabase WITH OWNER metabase'
+SELECT 'CREATE DATABASE metabase_db WITH OWNER metabase'
 WHERE NOT EXISTS (
   SELECT 1
   FROM pg_database
-  WHERE datname = 'metabase'
+  WHERE datname = 'metabase_db'
 )\gexec
 
-GRANT ALL PRIVILEGES ON DATABASE metabase TO metabase;
+GRANT ALL PRIVILEGES ON DATABASE metabase_db TO metabase;

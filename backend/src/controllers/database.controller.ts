@@ -95,8 +95,10 @@ export class DatabaseController {
   saveFirebird = async (request: Request, response: Response): Promise<void> => {
     try {
       const payload = this.parseFirebirdPayload(request.body);
+      const config = this.toConnectionConfig(payload);
       await this.firebirdService.testConnection(payload);
-      await this.postgresService.saveFirebirdConfig(this.toConnectionConfig(payload));
+      await this.postgresService.saveFirebirdConfig(config);
+      await this.firebirdService.initializePool(config);
 
       response.status(200).json({
         ok: true,

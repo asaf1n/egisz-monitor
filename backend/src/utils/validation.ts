@@ -1,33 +1,40 @@
 import { AppConfig, FirebirdConnectionConfig } from "../types";
 
+const DEFAULT_SYNC_WINDOW_DAYS = 30;
+
+function resolveSyncWindowDays(rawValue: string | undefined): number {
+  const parsed = Number(rawValue);
+
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.trunc(parsed);
+  }
+
+  return DEFAULT_SYNC_WINDOW_DAYS;
+}
+
 export function buildDefaultFirebirdJoinQuery(): string {
+  const syncWindowDays = resolveSyncWindowDays(process.env.FIREBIRD_SYNC_WINDOW_DAYS);
+
   return `SELECT
-    CAST(NULL AS BIGINT) AS LICENSE_ID,
-    CAST(NULL AS VARCHAR(255)) AS LICENSE_NUMBER,
-    CAST(NULL AS TIMESTAMP) AS LICENSE_CREATED_AT,
-    e.LOGID AS EXCHANGELOG_ID,
     e.LOGID AS LOGID,
-    e.LOGSTATE,
-    e.LOGTYPE,
-    e.LOGMODE,
-    e.LOGTEXT,
-    e.MSGTEXT,
-    e.LOGDATE,
-    e.CREATEDATE AS LOG_CREATED_AT,
+    e.LOGDATE AS LOGDATE,
+    e.LOGSTATE AS LOGSTATE,
+    e.LOGTEXT AS LOGTEXT,
+    e.MSGTEXT AS MSGTEXT,
+    e.METHOD AS METHOD,
+    e.URI AS URI,
+    e."ACTION" AS ACTION,
+    e.PARENTLOGID AS PARENTLOGID,
+    e.GRPID AS GRPID,
     e.MODIFYDATE AS MODIFYDATE,
-    e.URI,
-    e.ACTION,
-    e.METHOD,
-    e.GRPID,
-    CAST(NULL AS BIGINT) AS JID,
-    CAST(NULL AS VARCHAR(255)) AS JNAME,
-    CAST(NULL AS VARCHAR(255)) AS MO_UID,
-    CAST(NULL AS VARCHAR(255)) AS MO_DOMEN,
-    CAST(NULL AS VARCHAR(255)) AS REPLYTO,
-    CAST(NULL AS BIGINT) AS KIND,
-    CAST(NULL AS BIGINT) AS SERVICE_TYPE
+    e.CREATEDATE AS LOG_CREATED_AT,
+    m.REPLYTO AS REPLYTO,
+    m.DOCUMENTID AS DOCUMENTID
   FROM EXCHANGELOG e
-  ORDER BY e.LOGID`;
+  LEFT JOIN EGISZ_MESSAGES m
+    ON m.MSGID = e.MSGID
+  WHERE e.LOGDATE >= DATEADD(-${syncWindowDays} DAY TO CURRENT_TIMESTAMP)
+  ORDER BY e.LOGID DESC`;
 }
 
 function getRequiredEnv(name: string): string {

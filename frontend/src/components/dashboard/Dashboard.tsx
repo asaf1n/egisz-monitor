@@ -172,6 +172,7 @@ export function Dashboard(): JSX.Element {
   }, []);
 
   const periodLabel = periodOptions.find((option) => option.value === selectedPeriod)?.label ?? "24 часа";
+  const statisticsTitle = selectedPeriod === "24h" ? "Статистика за последние 24ч" : `Статистика за ${periodLabel.toLowerCase()}`;
 
   return (
     <main className="min-h-screen bg-canvas text-ink">
@@ -222,7 +223,11 @@ export function Dashboard(): JSX.Element {
             </div>
           ) : (
             <>
-              <section className="mt-8 grid gap-4 md:grid-cols-3">
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-xl font-semibold text-ink">{statisticsTitle}</h2>
+                <p className="text-sm text-ink/55">Показатели по выбранному периоду</p>
+              </div>
+              <section className="mt-6 grid gap-4 md:grid-cols-3">
                 <KpiCard title={`Всего записей за ${periodLabel.toLowerCase()}`} value={kpi.total.toLocaleString("ru-RU")} accent="bg-moss" />
                 <KpiCard title="Успешных, %" value={`${kpi.successRate.toFixed(2)}%`} accent="bg-clay" />
                 <KpiCard title="Уникальных ошибок" value={kpi.uniqueErrors.toLocaleString("ru-RU")} accent="bg-amber-500" />
@@ -275,7 +280,7 @@ export function Dashboard(): JSX.Element {
                         <thead>
                           <tr className="text-left text-sm text-ink/45">
                             <th className="px-4 py-2">Клиника</th>
-                            <th className="px-4 py-2">MO UID</th>
+                            <th className="px-4 py-2">Clinic JID</th>
                             <th className="px-4 py-2">Ошибок</th>
                             <th className="px-4 py-2">Всего</th>
                             <th className="px-4 py-2">Успешность</th>
@@ -433,7 +438,7 @@ export function Dashboard(): JSX.Element {
                       <thead>
                         <tr className="text-left text-sm text-ink/45">
                           <th className="px-4 py-2">Клиника</th>
-                          <th className="px-4 py-2">MO UID</th>
+                          <th className="px-4 py-2">Clinic JID</th>
                           <th className="px-4 py-2">Сервис</th>
                           <th className="px-4 py-2">Последняя активность</th>
                           <th className="px-4 py-2">Статус</th>

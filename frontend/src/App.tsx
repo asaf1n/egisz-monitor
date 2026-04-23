@@ -1,45 +1,41 @@
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import Configuration from "./components/config/Configuration";
 import Dashboard from "./components/dashboard/Dashboard";
 
-function Navigation(): JSX.Element {
-  const getLinkClassName = ({ isActive }: { isActive: boolean }): string =>
-    `rounded-full px-4 py-2 text-sm font-medium transition ${
-      isActive ? "bg-moss text-white shadow-sm" : "text-ink/65 hover:bg-moss/8 hover:text-ink"
-    }`;
-
+function LegacyDashboardPlaceholder(): JSX.Element {
   return (
-    <header className="sticky top-0 z-10 border-b border-ink/8 bg-white/92 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.3em] text-ink/35">EGISZ Monitor</p>
-          <p className="mt-1 text-lg font-semibold text-ink">Панель аналитики и настроек</p>
-        </div>
+    <main className="min-h-screen bg-[#121826] font-mono text-white">
+      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
+        <section className="rounded-2xl bg-[#0F1522] p-8">
+          <p className="text-xs uppercase tracking-[0.2em] text-[#4B5563]">legacy</p>
+          <h1 className="mt-3 text-3xl font-semibold">Архивный дашборд</h1>
+          <p className="mt-4 max-w-2xl text-sm leading-6 text-[#9CA3AF]">
+            Этот маршрут сохранен как заглушка для старого сценария. Основной путь сейчас проходит через конфигурацию и Metabase.
+          </p>
 
-        <nav className="flex items-center gap-2 rounded-full border border-ink/8 bg-canvas/75 p-1">
-          <NavLink to="/dashboard" className={getLinkClassName}>
-            Дашборд
-          </NavLink>
-          <NavLink to="/" end className={getLinkClassName}>
-            Настройки
-          </NavLink>
-        </nav>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <a href="/" className="inline-flex items-center justify-center rounded-lg bg-[#509EE3] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#62A8E7]">
+              Вернуться к конфигурации
+            </a>
+            <a href="/dashboard" className="inline-flex items-center justify-center rounded-lg bg-[#111B2B] px-5 py-3 text-sm font-semibold text-[#D1D5DB] transition hover:text-white">
+              Открыть текущий dashboard
+            </a>
+          </div>
+        </section>
       </div>
-    </header>
+    </main>
   );
 }
 
 function App(): JSX.Element {
   return (
-    <>
-      <Navigation />
-      <Routes>
-        <Route path="/" element={<Configuration />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </>
+    <Routes>
+      <Route path="/" element={<Configuration />} />
+      <Route path="/legacy-dashboard" element={<LegacyDashboardPlaceholder />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 

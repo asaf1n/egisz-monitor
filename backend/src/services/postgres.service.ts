@@ -6,7 +6,8 @@ import {
   FirebirdConfigResponse,
   FirebirdConnectionConfig,
   PostgresConnectionIssue,
-  StarSchemaLogRecord
+  StarSchemaLogRecord,
+  SyncStatus
 } from "../types";
 import { buildDefaultFirebirdJoinQuery } from "../utils/validation";
 
@@ -37,6 +38,7 @@ export class PostgresService {
   private readonly schemaName: string;
   private static readonly ETL_LOCK_NAMESPACE = 48219;
   private static readonly ETL_LOCK_KEY = 1;
+  private static readonly UPSERT_BATCH_SIZE = 500;
   private static readonly SEMD_DICTIONARY: Readonly<Record<string, string>> = {
     "40": "РџСЂРѕС‚РѕРєРѕР» С‚РµР»РµРјРµРґРёС†РёРЅСЃРєРѕР№ РєРѕРЅСЃСѓР»СЊС‚Р°С†РёРё",
     "43": "РќР°РїСЂР°РІР»РµРЅРёРµ РЅР° РіРѕСЃРїРёС‚Р°Р»РёР·Р°С†РёСЋ, РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚РµР»СЊРЅРѕРµ Р»РµС‡РµРЅРёРµ, РѕР±СЃР»РµРґРѕРІР°РЅРёРµ, РєРѕРЅСЃСѓР»СЊС‚Р°С†РёСЋ",
@@ -129,7 +131,7 @@ export class PostgresService {
       password: config.password,
       max: 10,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000
+      connectionTimeoutMillis: 60000
     });
   }
 
@@ -144,6 +146,45 @@ export class PostgresService {
           ELSE NULL
         END
     `;
+  }
+
+  private buildNormalizedErrorTextSql(columnRef: string): string {
+    return `regexp_replace(
+      regexp_replace(
+        regexp_replace(
+          regexp_replace(
+            regexp_replace(
+              convert_from(convert_to(${columnRef}, 'UTF8'), 'UTF8'),
+              '\\b(?:\\d{1,3}\\.){3}\\d{1,3}(?::\\d+)?\\b',
+              '[IP]',
+              'gi'
+            ),
+            '(?:[[:alnum:]](?:[[:alnum:]-]{0,61}[[:alnum:]])?\\.)+[[:alpha:]]{2,}(?::\\d+)?',
+            '[HOST]',
+            'gi'
+          ),
+          '\\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b',
+          '[ID]',
+          'gi'
+        ),
+        '\\b\\d{6,}\\b',
+        '[ID]',
+        'g'
+      ),
+      '\\s+',
+      ' ',
+      'g'
+    )`;
+  }
+
+  private buildBusinessErrorCategorySql(columnRef: string): string {
+    return `CASE
+      WHEN ${columnRef} ~* 'cvc-|xsd' THEN 'Ошибка валидации XSD'
+      WHEN ${columnRef} ~* '(^|[^[:alnum:]_])oid([^[:alnum:]_]|$)|справочник|нси' THEN 'Ошибка заполнения реквизитов/НСИ'
+      WHEN ${columnRef} ~* 'timeout|504|connection|refused' THEN 'Ошибка связи'
+      WHEN ${columnRef} ~* 'дубликат|зарегистрирован|логическ(ая|ой)?\\s+ошибк' THEN 'Ошибка логики ЕГИСЗ'
+      ELSE 'Прочие ошибки'
+    END`;
   }
 
   async ensureSchema(): Promise<void> {
@@ -215,6 +256,8 @@ export class PostgresService {
           transaction_date TIMESTAMP NOT NULL,
           status VARCHAR(20) NOT NULL,
           error_category VARCHAR(50),
+          error_code VARCHAR(255),
+          error_message TEXT,
           error_text TEXT,
           CONSTRAINT chk_fact_transactions_status CHECK (status IN ('success', 'error')),
           CONSTRAINT chk_fact_transactions_error_category CHECK (
@@ -243,6 +286,15 @@ export class PostgresService {
         ALTER TABLE ${this.schemaName}.egisz_errors
         ADD COLUMN IF NOT EXISTS hostname VARCHAR(256)
       `);
+      await client.query(`
+        ALTER TABLE ${this.schemaName}.fact_transactions
+        ADD COLUMN IF NOT EXISTS error_code VARCHAR(255)
+      `);
+      await client.query(`
+        ALTER TABLE ${this.schemaName}.fact_transactions
+        ADD COLUMN IF NOT EXISTS error_message TEXT
+      `);
+
 
       await client.query(`
         CREATE TABLE IF NOT EXISTS ${this.schemaName}.dim_error_costs (
@@ -389,6 +441,17 @@ export class PostgresService {
       return 0;
     }
 
+    let inserted = 0;
+
+    for (let index = 0; index < records.length; index += PostgresService.UPSERT_BATCH_SIZE) {
+      const chunk = records.slice(index, index + PostgresService.UPSERT_BATCH_SIZE);
+      inserted += await this.upsertStarSchemaChunk(chunk);
+    }
+
+    return inserted;
+  }
+
+  private async upsertStarSchemaChunk(records: StarSchemaLogRecord[]): Promise<number> {
     const client = await this.pool.connect();
 
     try {
@@ -462,6 +525,48 @@ export class PostgresService {
     };
   }
 
+  async getSyncStatus(): Promise<SyncStatus> {
+    try {
+      await this.ping();
+
+      const result = await this.pool.query<{
+        total_records: string;
+        success_records: string;
+        error_records: string;
+        last_sync_date: Date | null;
+      }>(
+        `
+          SELECT
+            COUNT(*)::BIGINT AS total_records,
+            COUNT(*) FILTER (WHERE status = 'success')::BIGINT AS success_records,
+            COUNT(*) FILTER (WHERE status = 'error')::BIGINT AS error_records,
+            MAX(transaction_date) AS last_sync_date
+          FROM ${this.schemaName}.fact_transactions
+        `
+      );
+
+      const row = result.rows[0];
+
+      return {
+        totalRecords: Number(row?.total_records ?? 0),
+        successRecords: Number(row?.success_records ?? 0),
+        errorRecords: Number(row?.error_records ?? 0),
+        lastSyncDate: row?.last_sync_date ? row.last_sync_date.toISOString() : null,
+        degraded: false
+      };
+    } catch (error) {
+      const issue = this.inspectConnectionIssue(error);
+      return {
+        totalRecords: 0,
+        successRecords: 0,
+        errorRecords: 0,
+        lastSyncDate: null,
+        degraded: true,
+        message: issue.message
+      };
+    }
+  }
+
   inspectConnectionIssue(error: unknown): PostgresConnectionIssue {
     const message = error instanceof Error ? error.message : "Unknown PostgreSQL error";
 
@@ -470,7 +575,7 @@ export class PostgresService {
         code: "authentication_failed",
         message,
         userHint:
-          `РџСЂРѕРІРµСЂСЊС‚Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ/РїР°СЂРѕР»СЊ PostgreSQL РґР»СЏ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ pgdata. ` +
+          `РџСЂРѕРІРµСЂСЊС‚Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ/РїР°СЂРѕР»СЊ PostgreSQL РґР»СЏ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ postgres_data. ` +
           `РџРµСЂРµРјРµРЅРЅС‹Рµ РѕРєСЂСѓР¶РµРЅРёСЏ РЅРµ РїРµСЂРµРѕРїСЂРµРґРµР»СЏСЋС‚ СѓР¶Рµ СЃРѕР·РґР°РЅРЅС‹С… РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№.`
       };
     }
@@ -487,7 +592,7 @@ export class PostgresService {
       return {
         code: "schema_migration_failed",
         message,
-        userHint: "РџСЂРѕРІРµСЂСЊС‚Рµ СЃРѕСЃС‚РѕСЏРЅРёРµ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ pgdata Рё РєРѕРЅСЃРёСЃС‚РµРЅС‚РЅРѕСЃС‚СЊ РёСЃС‚РѕСЂРёС‡РµСЃРєРёС… РґР°РЅРЅС‹С… РїРµСЂРµРґ РјРёРіСЂР°С†РёРµР№."
+        userHint: "РџСЂРѕРІРµСЂСЊС‚Рµ СЃРѕСЃС‚РѕСЏРЅРёРµ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ postgres_data Рё РєРѕРЅСЃРёСЃС‚РµРЅС‚РЅРѕСЃС‚СЊ РёСЃС‚РѕСЂРёС‡РµСЃРєРёС… РґР°РЅРЅС‹С… РїРµСЂРµРґ РјРёРіСЂР°С†РёРµР№."
       };
     }
 
@@ -512,7 +617,7 @@ export class PostgresService {
   getQualifiedTableName(
     tableName: "app_config" | "dim_clinics" | "dim_services" | "fact_transactions" | "egisz_errors" | "dim_error_costs" |
     "view_daily_summary" | "view_error_analysis" | "view_clinic_sla" | "v_unified_analytics" | 
-    "v_support_economic_metrics" | "v_vpn_node_stability"
+    "v_support_economic_metrics" | "v_vpn_node_stability" | "v_clinic_performance"
   ): string {
     return `${this.schemaName}.${tableName}`;
   }
@@ -678,9 +783,11 @@ export class PostgresService {
           transaction_date,
           status,
           error_category,
+          error_code,
+          error_message,
           error_text
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (original_log_id) DO UPDATE
         SET
           clinic_id = EXCLUDED.clinic_id,
@@ -688,6 +795,8 @@ export class PostgresService {
           transaction_date = EXCLUDED.transaction_date,
           status = EXCLUDED.status,
           error_category = EXCLUDED.error_category,
+          error_code = EXCLUDED.error_code,
+          error_message = EXCLUDED.error_message,
           error_text = EXCLUDED.error_text
       `,
       [
@@ -697,6 +806,8 @@ export class PostgresService {
         record.fact.transactionDate,
         record.fact.status,
         record.fact.errorCategory,
+        record.fact.errorCode,
+        record.fact.errorMessage,
         record.fact.errorText
       ]
     );
@@ -892,6 +1003,19 @@ export class PostgresService {
         AND ee.hostname IS NOT NULL
         AND dc.mo_domen = ee.hostname
     `);
+    await client.query(`
+      WITH unresolved_clinic AS (
+        INSERT INTO ${this.schemaName}.dim_clinics (jid, mo_uid, mo_domen, jname, is_verified)
+        VALUES (0, 'unresolved-jid-bucket', NULL, 'Не сопоставлено (нет JID)', FALSE)
+        ON CONFLICT (mo_uid) DO UPDATE
+        SET jname = EXCLUDED.jname
+        RETURNING clinic_id
+      )
+      UPDATE ${this.schemaName}.egisz_errors AS ee
+      SET clinic_id = unresolved_clinic.clinic_id
+      FROM unresolved_clinic
+      WHERE ee.clinic_id IS NULL
+    `);
   }
 
   private async enforceEgiszErrorClinicForeignKey(client: PoolClient): Promise<void> {
@@ -988,6 +1112,7 @@ export class PostgresService {
         ON dc.clinic_id = ft.clinic_id
       JOIN ${this.schemaName}.dim_services AS ds
         ON ds.service_id = ft.service_id
+      WHERE dc.mo_uid <> 'ghost-log-group-9901'
       GROUP BY
         ft.transaction_date::date,
         dc.mo_uid,
@@ -997,21 +1122,23 @@ export class PostgresService {
     await client.query(`
       CREATE OR REPLACE VIEW ${this.schemaName}.view_error_analysis AS
       SELECT
-        ft.error_text,
         ft.error_category AS category,
         COUNT(*) AS occurrence_count,
         CASE
-          WHEN ft.error_category = 'network' THEN 'РЎРµС‚РµРІР°СЏ'
-          WHEN ft.error_category = 'async' THEN 'РђСЃРёРЅС…СЂРѕРЅРЅР°СЏ'
-          ELSE 'РџСЂРѕС‡Р°СЏ'
+          WHEN ft.error_category = 'network' THEN 'Сетевая'
+          WHEN ft.error_category = 'async' THEN 'Асинхронная'
+          ELSE 'Прочая'
         END AS category_ru,
         MIN(ft.transaction_date) AS first_seen_at,
-        MAX(ft.transaction_date) AS last_seen_at
+        MAX(ft.transaction_date) AS last_seen_at,
+        MIN(ft.error_text) AS sample_error_text
       FROM ${this.schemaName}.fact_transactions AS ft
+      JOIN ${this.schemaName}.dim_clinics AS dc
+        ON dc.clinic_id = ft.clinic_id
       WHERE ft.status = 'error'
+        AND dc.mo_uid <> 'ghost-log-group-9901'
         AND ft.transaction_date >= CURRENT_TIMESTAMP - INTERVAL '7 days'
       GROUP BY
-        ft.error_text,
         ft.error_category
     `);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.view_clinic_sla CASCADE`);
@@ -1041,6 +1168,7 @@ export class PostgresService {
       FROM ${this.schemaName}.dim_clinics AS dc
       LEFT JOIN clinic_last_response AS clr
         ON clr.clinic_id = dc.clinic_id
+      WHERE dc.mo_uid <> 'ghost-log-group-9901'
     `);
       await client.query(`
         UPDATE ${this.schemaName}.dim_services
@@ -1051,11 +1179,15 @@ export class PostgresService {
           AND description LIKE '/%'
       `);
       await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_unified_analytics CASCADE`);
+      const rawErrorTextSql = "COALESCE(ee.error_text, ft.error_text)";
+      const normalizedErrorTextSql = this.buildNormalizedErrorTextSql(rawErrorTextSql);
+      const businessErrorCategorySql = this.buildBusinessErrorCategorySql(normalizedErrorTextSql);
       await client.query(`
         CREATE OR REPLACE VIEW ${this.schemaName}.v_unified_analytics AS
       SELECT
         ft.transaction_id,
         ft.original_log_id,
+        ft.original_log_id AS original_LOGID,
         ft.transaction_date,
         ft.transaction_date::date AS date_day,
         date_trunc('hour', ft.transaction_date) AS date_hour,
@@ -1064,6 +1196,7 @@ export class PostgresService {
         (ft.status = 'error') AS is_error,
         ft.clinic_id,
         dc.jid,
+        dc.jid AS clinic_jid,
         dc.jname,
         dc.is_verified,
         COALESCE(
@@ -1072,44 +1205,54 @@ export class PostgresService {
             WHEN dc.jid IS NOT NULL AND dc.jid <> 0 THEN 'Клиника JID: ' || dc.jid::TEXT
             ELSE NULL
           END,
+          NULLIF(TRIM(ee.hostname), ''),
           'Неизвестная клиника'
         ) AS clinic_display_name,
         dc.mo_uid,
         dc.mo_domen,
         ft.service_id,
         ds.kind AS service_kind,
+        ds.kind AS document_type,
         ds.service_type,
         ds.description AS service_description,
         ${this.buildSemdNameSql("ds.kind")} AS service_kind_name,
+        COALESCE(${this.buildSemdNameSql("ds.kind")}, ds.description, ds.kind) AS document_name,
         COALESCE(${this.buildSemdNameSql("ds.kind")}, ds.description, ds.service_type, ds.kind) AS service_display_name,
-        ft.error_category,
-        CASE
-          WHEN ft.error_category = 'network' THEN 'РЎРµС‚РµРІР°СЏ'
-          WHEN ft.error_category = 'async' THEN 'РђСЃРёРЅС…СЂРѕРЅРЅР°СЏ'
-          WHEN ft.error_category IS NULL THEN NULL
-          ELSE 'РџСЂРѕС‡Р°СЏ'
-        END AS error_category_ru,
         CASE
           WHEN ft.status <> 'error' THEN NULL
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'auth|authentication|Р°РІС‚РѕСЂРёР·Р°С†|Р»РѕРіРёРЅ|РїР°СЂРѕР»|token|401|403'
+          ELSE ${businessErrorCategorySql}
+        END AS error_category,
+        ft.error_category AS transport_error_category,
+        CASE
+          WHEN ft.status <> 'error' THEN NULL
+          WHEN ee.hostname ~* 'gost-\\d+\\.infoclinica\\.lan' THEN 'clinic_hostname'
+          WHEN ${rawErrorTextSql} ~* 'auth|authentication|авторизац|логин|парол|token|401|403'
             THEN 'auth'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'timeout|timed out|С‚Р°Р№РјР°СѓС‚'
+          WHEN ${rawErrorTextSql} ~* 'timeout|timed out|таймаут'
             THEN 'timeout'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'connection refused|connect failed|could not connect|СЃРѕРµРґРёРЅРµРЅРё'
+          WHEN ${rawErrorTextSql} ~* 'connection refused|connect failed|could not connect|соединени'
             THEN 'connection_refused'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'proxy'
+          WHEN ${rawErrorTextSql} ~* 'proxy'
             THEN 'proxy'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'egisz|РµРіРёСЃР·'
+          WHEN ${rawErrorTextSql} ~* 'egisz|егисз'
             THEN 'egisz'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'validation|invalid|РЅРµРєРѕСЂСЂРµРєС‚|РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°'
+          WHEN ${rawErrorTextSql} ~* 'validation|invalid|некоррект|ошибка форма'
             THEN 'validation'
           ELSE 'unknown'
         END AS error_subcategory,
-        COALESCE(ee.error_text, ft.error_text) AS error_text,
+        convert_from(convert_to(${rawErrorTextSql}, 'UTF8'), 'UTF8') AS error_text,
+        ${normalizedErrorTextSql} AS clean_error_text,
+        ${normalizedErrorTextSql} AS normalized_error_text,
         md5(
-          COALESCE(ft.error_category, '') || '|' ||
           COALESCE(
-            regexp_replace(COALESCE(ee.error_text, ft.error_text, ''), '\s+', ' ', 'g'),
+            CASE
+              WHEN ft.status <> 'error' THEN NULL
+              ELSE ${businessErrorCategorySql}
+            END,
+            ''
+          ) || '|' ||
+          COALESCE(
+            ${normalizedErrorTextSql},
             ''
           )
         ) AS error_fingerprint,
@@ -1132,37 +1275,38 @@ export class PostgresService {
         ON dec.error_category = COALESCE(
           CASE
             WHEN ft.status <> 'error' THEN NULL
-            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'auth|authentication|Р°РІС‚РѕСЂРёР·Р°С†|Р»РѕРіРёРЅ|РїР°СЂРѕР»|token|401|403'
+            WHEN ${rawErrorTextSql} ~* 'auth|authentication|авторизац|логин|парол|token|401|403'
               THEN 'other'
-            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'timeout|timed out|С‚Р°Р№РјР°СѓС‚'
+            WHEN ${rawErrorTextSql} ~* 'timeout|timed out|таймаут'
               THEN 'other'
-            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'connection refused|connect failed|could not connect|СЃРѕРµРґРёРЅРµРЅРё'
+            WHEN ${rawErrorTextSql} ~* 'connection refused|connect failed|could not connect|соединени'
               THEN 'other'
-            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'proxy'
+            WHEN ${rawErrorTextSql} ~* 'proxy'
               THEN 'other'
-            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'egisz|РµРіРёСЃР·'
+            WHEN ${rawErrorTextSql} ~* 'egisz|егисз'
               THEN 'other'
-            WHEN COALESCE(ee.error_text, ft.error_text) ~* 'validation|invalid|РЅРµРєРѕСЂСЂРµРєС‚|РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°'
+            WHEN ${rawErrorTextSql} ~* 'validation|invalid|некоррект|ошибка форма'
               THEN 'other'
             ELSE ft.error_category
           END,
           'other'
         ) AND dec.error_subcategory = CASE
           WHEN ft.status <> 'error' THEN NULL
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'auth|authentication|Р°РІС‚РѕСЂРёР·Р°С†|Р»РѕРіРёРЅ|РїР°СЂРѕР»|token|401|403'
+          WHEN ${rawErrorTextSql} ~* 'auth|authentication|авторизац|логин|парол|token|401|403'
             THEN 'auth'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'timeout|timed out|С‚Р°Р№РјР°СѓС‚'
+          WHEN ${rawErrorTextSql} ~* 'timeout|timed out|таймаут'
             THEN 'timeout'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'connection refused|connect failed|could not connect|СЃРѕРµРґРёРЅРµРЅРё'
+          WHEN ${rawErrorTextSql} ~* 'connection refused|connect failed|could not connect|соединени'
             THEN 'connection_refused'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'proxy'
+          WHEN ${rawErrorTextSql} ~* 'proxy'
             THEN 'proxy'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'egisz|РµРіРёСЃР·'
+          WHEN ${rawErrorTextSql} ~* 'egisz|егисз'
             THEN 'egisz'
-          WHEN COALESCE(ee.error_text, ft.error_text) ~* 'validation|invalid|РЅРµРєРѕСЂСЂРµРєС‚|РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°'
+          WHEN ${rawErrorTextSql} ~* 'validation|invalid|некоррект|ошибка форма'
             THEN 'validation'
           ELSE 'unknown'
         END
+      WHERE dc.mo_uid <> 'ghost-log-group-9901'
     `);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_error_fingerprints CASCADE`);
     await client.query(`
@@ -1170,7 +1314,6 @@ export class PostgresService {
       SELECT
         ua.error_fingerprint,
         ua.error_category,
-        ua.error_category_ru,
         ua.error_subcategory,
         MIN(ua.transaction_date) AS first_seen_at,
         MAX(ua.transaction_date) AS last_seen_at,
@@ -1183,7 +1326,6 @@ export class PostgresService {
       GROUP BY
         ua.error_fingerprint,
         ua.error_category,
-        ua.error_category_ru,
         ua.error_subcategory
     `);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_clinic_hourly_sla CASCADE`);
@@ -1211,6 +1353,36 @@ export class PostgresService {
         ua.jname,
         ua.clinic_display_name,
         ua.mo_uid
+    `);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_clinic_performance CASCADE`);
+    await client.query(`
+      CREATE OR REPLACE VIEW ${this.schemaName}.v_clinic_performance AS
+      SELECT
+        ua.date_day,
+        ua.clinic_id,
+        ua.jid,
+        ua.jname,
+        ua.clinic_display_name,
+        ua.mo_uid,
+        ua.document_type,
+        ua.document_name,
+        COUNT(*) AS total_requests,
+        COUNT(*) FILTER (WHERE ua.is_success) AS successful_requests,
+        COUNT(*) FILTER (WHERE ua.is_error) AS failed_requests,
+        ROUND(
+          100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0),
+          2
+        ) AS success_rate_pct
+      FROM ${this.schemaName}.v_unified_analytics AS ua
+      GROUP BY
+        ua.date_day,
+        ua.clinic_id,
+        ua.jid,
+        ua.jname,
+        ua.clinic_display_name,
+        ua.mo_uid,
+        ua.document_type,
+        ua.document_name
     `);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_service_hourly_health CASCADE`);
     await client.query(`
@@ -1316,6 +1488,7 @@ export class PostgresService {
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_unified_analytics CASCADE`);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_support_economic_metrics CASCADE`);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_vpn_node_stability CASCADE`);
+    await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_clinic_performance CASCADE`);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_error_fingerprints CASCADE`);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_clinic_hourly_sla CASCADE`);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_service_hourly_health CASCADE`);
@@ -1371,6 +1544,9 @@ export class PostgresService {
   }
 
   private normalizeStoredFirebirdConnection(config: StoredFirebirdConfig): FirebirdConnectionConfig {
+    const defaultJoinQuery = process.env.FIREBIRD_JOIN_QUERY ?? buildDefaultFirebirdJoinQuery();
+    const rawJoinQuery = this.readString(config.joinQuery, defaultJoinQuery);
+
     return {
       host: this.readString(config.host, DEFAULT_FIREBIRD_CONNECTION.host),
       port: this.readNumber(config.port, DEFAULT_FIREBIRD_CONNECTION.port),
@@ -1378,7 +1554,7 @@ export class PostgresService {
       user: this.readString(config.user, DEFAULT_FIREBIRD_CONNECTION.user),
       password: this.readString(config.password ?? config.pass, DEFAULT_FIREBIRD_CONNECTION.pass),
       pageSize: this.readNumber(config.pageSize, Number(process.env.FIREBIRD_PAGE_SIZE ?? "4096")),
-      joinQuery: this.readString(config.joinQuery, process.env.FIREBIRD_JOIN_QUERY ?? buildDefaultFirebirdJoinQuery())
+      joinQuery: this.normalizeJoinQuery(rawJoinQuery)
     };
   }
 
@@ -1406,6 +1582,22 @@ export class PostgresService {
     return typeof value === "boolean" ? value : fallback;
   }
 
+  private normalizeJoinQuery(query: string): string {
+    // Self-heal legacy persisted queries that reference non-existent Firebird columns.
+    const normalized = query
+      .replace(/\bl\.LID\b/gi, "l.ID")
+      .replace(/\bj\.MO_UID\b/gi, "l.MO_UID");
+
+    const hasInvalidLegacyColumns = /\be\.JID\b|\be\.KIND\b|\bm\.MSGTEXT\b/i.test(normalized);
+
+    if (hasInvalidLegacyColumns) {
+      console.warn("[Firebird] Detected legacy join query with non-existent columns. Falling back to default query.");
+      return buildDefaultFirebirdJoinQuery();
+    }
+
+    return normalized;
+  }
+
   private toDatabaseError(error: unknown, prefix: string): Error {
     const originalMessage = error instanceof Error ? error.message : "Unknown PostgreSQL error";
     const issue = this.inspectConnectionIssue(error);
@@ -1416,4 +1608,3 @@ export class PostgresService {
     );
   }
 }
-

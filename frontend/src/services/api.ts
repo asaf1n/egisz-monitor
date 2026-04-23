@@ -8,6 +8,7 @@ import {
   EtlRunStatus,
   FirebirdConfigFormData,
   FirebirdConfigView,
+  DatabaseStatus,
   HourlyTrendRow,
   ServiceHealthRow,
   StatusHeatmapRow,
@@ -18,13 +19,38 @@ function buildQueryUrl(path: string, period?: string): string {
   return period ? `${path}?period=${encodeURIComponent(period)}` : path;
 }
 
-async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json"
-    }
-  });
+const DEFAULT_GET_TIMEOUT_MS = 10000;
+const DEFAULT_POST_TIMEOUT_MS = 15000;
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function getJson<T>(url: string, timeoutMs = DEFAULT_GET_TIMEOUT_MS): Promise<T> {
+  const controller = new AbortController();
+  const timeoutHandle = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-store",
+        Pragma: "no-cache"
+      },
+      cache: "no-store",
+      signal: controller.signal
+    }).catch((error: unknown) => {
+      if (isAbortError(error)) {
+        throw new Error(`Request timed out after ${timeoutMs} ms`);
+      }
+
+      throw error;
+    });
+  } finally {
+    window.clearTimeout(timeoutHandle);
+  }
 
   const data = (await response.json().catch(() => null)) as T | { message?: string } | null;
 
@@ -40,14 +66,29 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 async function postJson<TResponse, TPayload>(url: string, payload: TPayload): Promise<TResponse> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+  const controller = new AbortController();
+  const timeoutHandle = window.setTimeout(() => controller.abort(), DEFAULT_POST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    }).catch((error: unknown) => {
+      if (isAbortError(error)) {
+        throw new Error(`Request timed out after ${DEFAULT_POST_TIMEOUT_MS} ms`);
+      }
+
+      throw error;
+    });
+  } finally {
+    window.clearTimeout(timeoutHandle);
+  }
 
   const data = (await response.json().catch(() => null)) as TResponse | { message?: string } | null;
 
@@ -126,6 +167,10 @@ export async function runEtlSync(): Promise<EtlRunStatus> {
 
 export async function fetchEtlStatus(): Promise<EtlRunStatus> {
   return getJson<EtlRunStatus>("/api/reports/etl-status");
+}
+
+export async function fetchDatabaseStatus(): Promise<DatabaseStatus> {
+  return getJson<DatabaseStatus>("/api/database/check");
 }
 
 export async function fetchFirebirdConnection(): Promise<FirebirdConfigView> {

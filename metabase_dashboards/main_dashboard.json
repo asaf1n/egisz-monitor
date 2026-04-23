@@ -1,76 +1,65 @@
 {
-  "name": "ЕГИСЗ: Мониторинг интеграции",
-  "description": "Ежедневный мониторинг ключевых метрик обмена с ЕГИСЗ: объём отправок, структура ошибок и динамика успешных и проблемных транзакций за последние 24 часа.",
+  "name": "Бизнес-мониторинг",
+  "description": "Управленческий и продуктовый мониторинг сервиса EGISZ: проникновение, успешность по типам документов и динамика по ЮЛ.",
   "collection_id": null,
   "cards": [
     {
-      "name": "KPI за последние 24 часа",
-      "description": "Сводный блок для быстрого контроля общего количества отправлений, процента успешности и числа уникальных ошибок за последние 24 часа.",
+      "name": "Проникновение сервиса",
+      "description": "Доля активных клиник за 30 дней от общего количества зарегистрированных JID.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT\n    COUNT(*)::bigint AS \"Общее количество отправлений\",\n    COALESCE(\n        ROUND(\n            100.0 * COUNT(*) FILTER (WHERE ua.status = 'success') / NULLIF(COUNT(*), 0),\n            2\n        ),\n        0\n    ) AS \"Процент успешности\",\n    COUNT(DISTINCT NULLIF(TRIM(ua.error_text), ''))::bigint AS \"Уникальные ошибки\"\nFROM public.v_unified_analytics AS ua\nWHERE ua.transaction_date >= NOW() - INTERVAL '24 hours';"
+          "query": "WITH total AS (SELECT COUNT(DISTINCT dc.jid)::bigint AS total_registered FROM public.dim_clinics dc WHERE dc.jid IS NOT NULL AND dc.mo_uid <> 'ghost-log-group-9901'), active AS (SELECT COUNT(DISTINCT ua.jid)::bigint AS active_30d FROM public.v_unified_analytics ua WHERE ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days') SELECT total.total_registered AS \"Всего зарегистрированных клиник\", active.active_30d AS \"Активные клиники (30д)\", COALESCE(ROUND(100.0 * active.active_30d / NULLIF(total.total_registered, 0), 2), 0) AS \"Проникновение сервиса, %\" FROM total CROSS JOIN active;"
         },
         "database": 1
       },
       "display": "table",
-      "visualization_settings": {
-        "table.pivot_column": null,
-        "table.cell_column": null
-      },
-      "sizeX": 12,
-      "sizeY": 4,
+      "visualization_settings": {},
+      "sizeX": 8,
+      "sizeY": 3,
       "row": 0,
       "col": 0
     },
     {
-      "name": "Распределение ошибок",
-      "description": "Показывает распределение инцидентов по категориям ошибок за последние 24 часа и помогает быстро увидеть доминирующие проблемы.",
+      "name": "Успешность по типам документов",
+      "description": "Распределение Success/Error по кодам KIND за 30 дней.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT\n    COALESCE(NULLIF(TRIM(ua.error_category_ru), ''), 'Неизвестная') AS \"Категория ошибки\",\n    COUNT(*)::bigint AS \"Количество инцидентов\"\nFROM public.v_unified_analytics AS ua\nWHERE ua.is_error\n  AND ua.transaction_date >= NOW() - INTERVAL '24 hours'\nGROUP BY COALESCE(NULLIF(TRIM(ua.error_category_ru), ''), 'Неизвестная')\nORDER BY 2 DESC, 1 ASC;"
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_type), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"KIND\", COUNT(*)::bigint AS \"Всего\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\", COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0), 2), 0) AS \"Успешность, %\", COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE ua.is_error) / NULLIF(COUNT(*), 0), 2), 0) AS \"Ошибки, %\" FROM public.v_unified_analytics ua WHERE ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY \"Всего\" DESC;"
         },
         "database": 1
       },
-      "display": "pie",
+      "display": "bar",
       "visualization_settings": {
-        "pie.dimension": "Категория ошибки",
-        "pie.metric": "Количество инцидентов"
+        "graph.dimensions": ["KIND"],
+        "graph.metrics": ["Успешно", "Ошибки"]
       },
-      "sizeX": 12,
-      "sizeY": 4,
+      "sizeX": 16,
+      "sizeY": 3,
       "row": 0,
-      "col": 12
+      "col": 8
     },
     {
-      "name": "Почасовой тренд",
-      "description": "Линейный график успешных и ошибочных отправок по часам для контроля текущей динамики обменов.",
+      "name": "Динамика по ЮЛ",
+      "description": "Топ активных клиник по объему транзакций за последние 30 дней.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "WITH series AS (\n    SELECT generate_series(\n        date_trunc('hour', NOW() - INTERVAL '23 hours'),\n        date_trunc('hour', NOW()),\n        INTERVAL '1 hour'\n    ) AS hour_bucket\n),\naggregated AS (\n    SELECT\n        date_trunc('hour', ua.transaction_date) AS hour_bucket,\n        COUNT(*) FILTER (WHERE ua.is_success)::bigint AS success_count,\n        COUNT(*) FILTER (WHERE ua.is_error)::bigint AS error_count\n    FROM public.v_unified_analytics AS ua\n    WHERE ua.transaction_date >= NOW() - INTERVAL '24 hours'\n    GROUP BY date_trunc('hour', ua.transaction_date)\n)\nSELECT\n    s.hour_bucket AS \"Час\",\n    COALESCE(a.success_count, 0)::bigint AS \"Количество успешных\",\n    COALESCE(a.error_count, 0)::bigint AS \"Количество ошибок\"\nFROM series AS s\nLEFT JOIN aggregated AS a\n    ON a.hour_bucket = s.hour_bucket\nORDER BY s.hour_bucket ASC;"
+          "query": "SELECT ua.jid AS \"JID\", ua.clinic_display_name AS \"Клиника\", COUNT(*)::bigint AS \"Транзакций\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY ua.jid, ua.clinic_display_name ORDER BY \"Транзакций\" DESC, ua.clinic_display_name ASC LIMIT 30;"
         },
         "database": 1
       },
-      "display": "line",
+      "display": "bar",
       "visualization_settings": {
-        "graph.dimensions": ["Час"],
-        "graph.metrics": ["Количество успешных", "Количество ошибок"]
+        "graph.dimensions": ["Клиника"],
+        "graph.metrics": ["Транзакций"]
       },
       "sizeX": 24,
-      "sizeY": 6,
-      "row": 4,
+      "sizeY": 5,
+      "row": 3,
       "col": 0
     }
   ],
-  "parameters": [
-    {
-      "name": "Период анализа",
-      "slug": "period",
-      "id": "period_param",
-      "type": "date/single",
-      "default": "today"
-    }
-  ]
+  "parameters": []
 }

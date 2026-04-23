@@ -4,7 +4,7 @@
 --
 -- The backend service is the source of truth for schema evolution and for all
 -- analytics views. This bootstrap file is only applied on the very first
--- PostgreSQL initialization when pgdata is empty.
+-- PostgreSQL initialization when postgres_data is empty.
 
 CREATE TABLE dim_clinics (
     clinic_id SERIAL PRIMARY KEY,
@@ -36,6 +36,8 @@ CREATE TABLE fact_transactions (
     transaction_date TIMESTAMP NOT NULL,
     status VARCHAR(20) NOT NULL,
     error_category VARCHAR(50),
+    error_code VARCHAR(255),
+    error_message TEXT,
     error_text TEXT,
     CONSTRAINT chk_status CHECK (status IN ('success', 'error')),
     CONSTRAINT chk_error_category CHECK (
@@ -58,6 +60,34 @@ CREATE TABLE egisz_errors (
 
 COMMENT ON TABLE egisz_errors IS 'Normalized EGISZ error log linked to dim_clinics';
 
+-- Error costs dimension table for analytics and business cost tracking
+CREATE TABLE dim_error_costs (
+    error_cost_id SERIAL PRIMARY KEY,
+    error_category VARCHAR(50) NOT NULL UNIQUE,
+    error_subcategory VARCHAR(50),
+    base_cost_per_error DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    escalation_multiplier DECIMAL(5, 2) NOT NULL DEFAULT 1.00,
+    description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_error_category_nonempty CHECK (length(trim(error_category)) > 0)
+);
+
+COMMENT ON TABLE dim_error_costs IS 'Error cost and escalation configuration for business metrics';
+COMMENT ON COLUMN dim_error_costs.error_category IS 'Top-level category used by runtime cost model';
+COMMENT ON COLUMN dim_error_costs.error_subcategory IS 'Sub-category for fine-grained cost calculation';
+COMMENT ON COLUMN dim_error_costs.base_cost_per_error IS 'Cost in currency units per single error occurrence';
+COMMENT ON COLUMN dim_error_costs.escalation_multiplier IS 'Multiplier for high-frequency errors (>threshold)';
+
+-- Bootstrap default error cost configurations
+INSERT INTO dim_error_costs (error_category, error_subcategory, base_cost_per_error, escalation_multiplier, description)
+VALUES
+    ('network', NULL, 50.00, 1.00, 'Network/transport-level failure'),
+    ('async', NULL, 25.00, 1.00, 'Asynchronous processing failure'),
+    ('other', 'unknown', 45.00, 1.10, 'Fallback category for uncategorized errors')
+ON CONFLICT (error_category) DO NOTHING;
+
 CREATE INDEX idx_dim_clinics_mo_domen ON dim_clinics(mo_domen);
 CREATE UNIQUE INDEX idx_dim_clinics_mo_domen_unique ON dim_clinics(mo_domen) WHERE mo_domen IS NOT NULL;
 CREATE INDEX idx_dim_clinics_jid ON dim_clinics(jid);
@@ -72,6 +102,8 @@ CREATE INDEX idx_egisz_errors_clinic_id ON egisz_errors(clinic_id);
 CREATE INDEX idx_egisz_errors_hostname ON egisz_errors(hostname);
 CREATE INDEX idx_egisz_errors_transaction_date ON egisz_errors(transaction_date);
 CREATE INDEX idx_egisz_errors_original_log_id ON egisz_errors(original_log_id);
+CREATE INDEX idx_dim_error_costs_category ON dim_error_costs(error_category);
+CREATE INDEX idx_dim_error_costs_active ON dim_error_costs(is_active) WHERE is_active = TRUE;
 
 CREATE TABLE IF NOT EXISTS app_config (
     config_id SERIAL PRIMARY KEY,

@@ -6,18 +6,28 @@ services:
       POSTGRES_DB: ${DB_NAME:-egisz_monitor}
       POSTGRES_USER: ${DB_USER:-egisz}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-egisz}
-    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=200"]
+    command: [
+      "postgres",
+      "-c", "shared_buffers=512MB",
+      "-c", "max_connections=300",
+      "-c", "max_wal_size=2GB",
+      "-c", "min_wal_size=1GB",
+      "-c", "idle_in_transaction_session_timeout=0",
+      "-c", "statement_timeout=0",
+      "-c", "log_statement=mod",
+      "-c", "log_min_duration_statement=5000"
+    ]
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-egisz} -d ${DB_NAME:-egisz_monitor}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-egisz} -d ${DB_NAME:-egisz_monitor} && pg_isready -U metabase -d metabase_db"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 20s
     restart: unless-stopped
     networks:
       - app-network
@@ -44,6 +54,10 @@ services:
       FIREBIRD_USER: ${FIREBIRD_USER:-sysdba}
       FIREBIRD_PASSWORD: ${FIREBIRD_PASSWORD:-masterkey}
       FIREBIRD_PAGE_SIZE: ${FIREBIRD_PAGE_SIZE:-4096}
+      FIREBIRD_ETL_PAGE_SIZE: ${FIREBIRD_ETL_PAGE_SIZE:-200}
+      FIREBIRD_ATTACH_TIMEOUT_MS: ${FIREBIRD_ATTACH_TIMEOUT_MS:-8000}
+      FIREBIRD_QUERY_TIMEOUT_MS: ${FIREBIRD_QUERY_TIMEOUT_MS:-12000}
+      FIREBIRD_ETL_QUERY_TIMEOUT_MS: ${FIREBIRD_ETL_QUERY_TIMEOUT_MS:-30000}
     depends_on:
       db:
         condition: service_healthy
@@ -87,20 +101,35 @@ services:
     ports:
       - "${METABASE_PORT:-3001}:3000"
     environment:
+      # PostgreSQL Backend for Metabase Persistence
       MB_DB_TYPE: postgres
-      MB_DB_DBNAME: ${MB_DB_NAME:-metabase}
+      MB_DB_DBNAME: metabase_db
+      MB_DB_HOST: db
       MB_DB_PORT: 5432
       MB_DB_USER: ${MB_DB_USER:-metabase}
       MB_DB_PASS: ${MB_DB_PASS:-metabase}
-      MB_DB_HOST: db
+      # Connection Pooling & Performance
+      MB_DB_POOL_SIZE: 10
+      MB_DB_INIT_POOL_SIZE: 5
+      MB_DB_MIN_IDLE_CONNECTIONS: 5
+      MB_DB_CONNECTION_TIMEOUT_MS: 60000
+      JAVA_OPTS: -Xmx2g
+      # Site Configuration
       MB_SITE_URL: ${METABASE_SITE_URL:-http://localhost:3001}
       METABASE_URL: http://localhost:3000
+      # Admin Setup
       METABASE_ADMIN_EMAIL: ${METABASE_ADMIN_EMAIL:-admin@egisz-monitor.local}
       METABASE_ADMIN_PASSWORD: ${METABASE_ADMIN_PASSWORD:-ChangeMeNow123!}
+      # Data Source Configuration
       APP_DATABASE_NAME: ${DB_NAME:-egisz_monitor}
       APP_DATABASE_DISPLAY_NAME: ${APP_DATABASE_DISPLAY_NAME:-EGISZ Reports}
+      APP_DATABASE_HOST: db
+      APP_DATABASE_PORT: 5432
       APP_DATABASE_USER: ${DB_USER:-egisz}
       APP_DATABASE_PASSWORD: ${DB_PASSWORD:-egisz}
+      # ETL Optimization
+      MB_QUERY_TIMEOUT_SECONDS: 3600
+      MB_QUERY_CACHE_TTL_RATIO: 10
     depends_on:
       db:
         condition: service_healthy
@@ -110,11 +139,11 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/api/health && pg_isready -U metabase -d metabase_db -h db"]
+      interval: 45s
+      timeout: 15s
+      retries: 5
+      start_period: 180s
 
   metabase-public:
     build:
@@ -139,7 +168,7 @@ services:
       start_period: 20s
 
 volumes:
-  pgdata:
+  postgres_data:
     driver: local
   metabase_public:
     driver: local

@@ -74,6 +74,12 @@ export interface FirebirdConfigView extends FirebirdConfigFormData {
   isDefault: boolean;
 }
 
+export interface DatabaseStatus {
+  firebird: "ok" | "error";
+  postgres: "ok" | "error";
+  details: string[];
+}
+
 export interface ClinicDirectoryIssue {
   clinicId: number;
   jid: number;
@@ -99,6 +105,9 @@ export interface EtlRunStatus {
   status: "idle" | "running" | "success" | "failed";
   stage: "idle" | "extracting" | "parsing" | "loading" | "success" | "failed";
   message: string;
+  progressPercent: number;
+  processedRows: number;
+  totalRows: number;
   startedAt: string | null;
   finishedAt: string | null;
   result: EtlRunResult | null;

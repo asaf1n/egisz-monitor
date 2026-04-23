@@ -1,96 +1,251 @@
-# EGISZ Monitor
+﻿# EGISZ Monitor
 
-Система мониторинга и BI-аналитики интеграций ЕГИСЗ. Проект извлекает данные из Firebird, сохраняет их в PostgreSQL, строит аналитику и визуализацию через Metabase.
+Внутрикорпоративная система мониторинга обмена с ЕГИСЗ: извлечение логов из Firebird, нормализация и хранение в PostgreSQL, аналитика и дашборды через Metabase.
+
+См. также [AGENTS.md](./AGENTS.md) как журнал архитектурных изменений.
+
+## Назначение системы
+- Централизованный контроль интеграционных обменов с ЕГИСЗ.
+- Разделение мониторинга на контуры:
+  - бизнес/продукт (`Статистика отправки`)
+  - технический анализ (`Технические метрики`)
+- Быстрый операционный доступ к статусу ETL и ключевым отчетам.
 
 ## Технологический стек
-- Backend: Node.js, TypeScript, Express, tsx
-- Frontend: React, Vite, Tailwind CSS
-- Database: PostgreSQL 15 (аналитическое хранилище), Firebird (источник логов)
-- BI: Metabase
-- Инфраструктура: Docker, Docker Compose, Nginx-прокси, PowerShell
+- Backend: Node.js, TypeScript, Express, `node-firebird`, `pg`, `xml2js`.
+- Frontend: React 18, Vite, TypeScript, Recharts.
+- DWH/OLAP слой: PostgreSQL 15.
+- Source: Firebird (журнал `EXCHANGELOG`, сообщения `EGISZ_MESSAGES`).
+- BI: Metabase + публичный nginx-прокси.
+- Инфраструктура: Docker, Docker Compose, PowerShell.
 
-## Что реализовано
-- ETL из Firebird в PostgreSQL с загрузкой фактов и нормализацией клиник
-- Web API: `/health`, `/api/config/*`, `/api/reports/*`
-- React-панель управления для мониторинга и конфигурации
-- Metabase и публичный Metabase-прокси для доступа к дашбордам
-- Инициализация PostgreSQL через `postgres/init`
+## Архитектура компонентов
+- `db` — PostgreSQL с runtime-схемой и таблицами аналитики.
+- `backend` — API + ETL (извлечение, парсинг, классификация, загрузка).
+- `frontend` — панель администрирования и мониторинга.
+- `metabase` — BI UI и построение отчетов.
+- `metabase-public` — публичный read-only слой дашбордов.
 
-## Быстрый старт
-1. Скопируйте root `.env.example` в `.env` и настройте параметры окружения.
-2. Запустите стек разработки:
-   ```powershell
-   .\start.ps1 -Action deploy
-   ```
-3. Для продакшн-стека используйте:
-   ```powershell
-   .\start.ps1 -Action prod
-   ```
+## Доступы и точки входа
 
-> В режиме разработки используется `docker-compose.yml` вместе с `docker-compose.dev.yml`.
+### URL (локальное окружение)
+- Frontend: `http://localhost:8812`
+- Backend health: `http://localhost:3000/health`
+- Backend API root: `http://localhost:3000/api/...`
+- Metabase Admin UI: `http://localhost:3001`
+- Metabase Public: `http://localhost:3002`
 
-## Доступы
-- Панель управления frontend: http://localhost:8812
-- Metabase Admin UI: http://localhost:3001
-- Публичный Metabase: http://localhost:3002
-- Backend healthcheck: http://localhost:3000/health
-
-### Metabase
+### Учетные данные Metabase (по умолчанию)
 - Email: `admin@egisz-monitor.local`
 - Password: `ChangeMeNow123!`
 
-## Конфигурация
-Основные значения по умолчанию заданы в `.env.example`:
-- PostgreSQL: `DB_NAME=egisz_monitor`, `DB_USER=egisz`, `DB_PASSWORD=egisz`, `DB_PORT=5432`
-- Firebird: `FIREBIRD_HOST=host.docker.internal`, `FIREBIRD_PORT=3050`, `FIREBIRD_ALIAS=proxy_egisz`, `FIREBIRD_USER=sysdba`, `FIREBIRD_PASSWORD=masterkey`, `FIREBIRD_PAGE_SIZE=4096`
-- Backend: `BACKEND_PORT=3000`
-- Frontend: `FRONTEND_PORT=8812`, `VITE_API_BASE_URL=http://localhost/api`
-- Metabase: `METABASE_PORT=3001`, `METABASE_PUBLIC_PORT=3002`
+### Порты по умолчанию
+- PostgreSQL: `5432`
+- Backend: `3000`
+- Frontend: `8812`
+- Metabase: `3001`
+- Metabase Public: `3002`
 
-## Компоненты
-- `db` — PostgreSQL 15 container с инициализацией из `postgres/init`
-- `backend` — Express API и ETL-сервис, который загружает данные из Firebird и наполняет PostgreSQL
-- `frontend` — React/Vite приложение панели управления
-- `metabase` — Metabase BI-сервер с подключением к PostgreSQL
-- `metabase-public` — nginx-прокси публичного Metabase-дashboards
+## Быстрый старт
 
-## API
-Backend предоставляет:
-- `GET /health`
-- `GET /api/database/check`
-- `GET /api/config/firebird`
-- `GET /api/config/clinic-directory-issues`
-- `POST /api/config/test-firebird`
-- `POST /api/config/save-firebird`
-- `GET /api/reports/*` и `POST /api/reports/run-etl`
+### 1) Подготовка окружения
+1. Скопировать `.env.example` в `.env` в корне репозитория.
+2. Проверить параметры подключения к Firebird (`FIREBIRD_HOST`, `FIREBIRD_PORT`, `FIREBIRD_ALIAS`, `FIREBIRD_USER`, `FIREBIRD_PASSWORD`).
 
-## Структура данных
-Аналитическая модель определяется в `postgres/init/001_schema.sql`:
-- `dim_clinics` — справочник клиник и MO
-- `dim_services` — справочник сервисов
-- `fact_transactions` — факты обращений, успешные и ошибочные транзакции
-- `egisz_errors` — нормализованные ошибки с привязкой к клинике
-- `app_config` — runtime-конфигурация приложения
-
-## Сборка и запуск без PowerShell
+### 2) Запуск dev-стека
 ```powershell
-cd c:\Users\artem\egisz-monitor
+.\start.ps1 -Action deploy
+```
+
+Эквивалент вручную:
+```powershell
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
-Для production-стека:
+
+### 3) Запуск production-стека
+```powershell
+.\start.ps1 -Action prod
+```
+
+Эквивалент вручную:
 ```powershell
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-## Полезные команды
-- `docker compose build`
-- `docker compose up -d`
-- `docker compose ps`
-- `docker compose logs -f backend`
-- `docker compose logs -f frontend`
-- `docker compose logs -f metabase`
+### 4) Проверка состояния
+```powershell
+docker compose ps
+docker compose logs -f backend
+```
 
-## Примечания
-- Публичный Metabase доступен без аутентификации через `metabase-public`.
-- Backend внутри контейнера использует `host.docker.internal` для доступа к внешнему Firebird.
-- `frontend` ожидает API на порту `3000` по умолчанию через `VITE_API_BASE_URL`.
+## Переменные окружения (ключевые)
+- PostgreSQL: `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_PORT`, `POSTGRES_SCHEMA`.
+- Firebird connection: `FIREBIRD_HOST`, `FIREBIRD_PORT`, `FIREBIRD_ALIAS`, `FIREBIRD_USER`, `FIREBIRD_PASSWORD`, `FIREBIRD_PAGE_SIZE`.
+- ETL tuning:
+  - `FIREBIRD_ETL_PAGE_SIZE` (дефолт `200`)
+  - `FIREBIRD_ATTACH_TIMEOUT_MS` (дефолт `8000`)
+  - `FIREBIRD_QUERY_TIMEOUT_MS` (дефолт `12000`)
+  - `FIREBIRD_ETL_QUERY_TIMEOUT_MS` (дефолт `30000`)
+- Backend: `BACKEND_PORT`.
+- Frontend: `FRONTEND_PORT`, `VITE_API_BASE_URL`.
+- Metabase: `METABASE_PORT`, `METABASE_PUBLIC_PORT`, `METABASE_ADMIN_EMAIL`, `METABASE_ADMIN_PASSWORD`.
+
+## API (основные endpoints)
+- `GET /health`
+- `GET /api/database/check`
+- `GET /api/config/firebird`
+- `POST /api/config/test-firebird`
+- `POST /api/config/save-firebird`
+- `GET /api/config/clinic-directory-issues`
+- `POST /api/reports/run-etl`
+- `GET /api/reports/etl-status`
+- `GET /api/reports/sync-status`
+- `GET /api/reports/kpi`
+- `GET /api/reports/errors-pie`
+- `GET /api/reports/status-heatmap`
+- `GET /api/reports/hourly-trend`
+- `GET /api/reports/clinic-errors`
+- `GET /api/reports/service-health`
+- `GET /api/reports/costly-clinics`
+- `GET /api/reports/vpn-node-status`
+- `GET /api/reports/system-health`
+
+## Логика ETL и парсинга (актуальная)
+
+### 1) Source extraction (Firebird)
+Базовый source query в backend intentionally плоский, без тяжелой бизнес-логики:
+- источник: `EXCHANGELOG` + `LEFT JOIN EGISZ_MESSAGES` по `MSGID`
+- сортировка: `ORDER BY e.LOGID DESC`
+- pagination: `FIRST/SKIP` инжектируется в runtime
+
+Цель: быстрый fetch сырых строк из Firebird без тяжелых join-конструкций.
+
+### 2) Правила статуса и ошибок
+При нормализации строк ETL применяются правила:
+- Сетевая ошибка:
+  - если `LOGSTATE = 3`, статус трактуется как `error`
+  - текст ошибки берется из `LOGTEXT`
+- Если не сетевая ошибка, анализируется `MSGTEXT`:
+  - XML-сценарий (SOAP):
+    - `<ns2:status>success</ns2:status>` -> `success`
+    - `<ns2:status>error</ns2:status>` -> `error`
+    - код ошибки: `<ns2:code>`
+    - сообщение ошибки: `<ns2:message>` (может быть длинным)
+  - Raw text-сценарий:
+    - детектируются инфраструктурные паттерны `Socket error`, `Host not found`, `CA_INACCESSIBILITY`
+
+### 3) JID/KIND и fallback
+- Источник `JID`/`KIND` — поля строки лога.
+- Если поля пустые, ETL пытается извлечь fallback из XML (`organization`, `kind`).
+- Если fallback отсутствует:
+  - запись уходит в отдельный технический контур `unresolved-jid-*` (не смешивается с верифицированными клиниками)
+  - `kind` -> `UNKNOWN`
+  - `clinic_id` в фактах/ошибках остается обязательным за счет отдельной dim-записи для несопоставленного клиента
+
+### 4) Категоризация ошибок в backend
+Backend присваивает категорию одной из групп:
+- `Infrastructure`
+- `FRMR_Error`
+- `Validation_Error`
+- `Success`
+
+### 5) Запись в PostgreSQL
+Факт-таблица хранит:
+- `status`
+- `error_category`
+- `error_code`
+- `error_message`
+- `error_text`
+
+Это обеспечивает совместимость отчетов и более детальную диагностику инцидентов.
+
+## Таблицы и поля интеграции (по proxy_tables.txt)
+
+### EXCHANGELOG (основной журнал обмена)
+- Ключевые поля: `LOGID`, `LOGDATE`, `LOGTYPE`, `LOGSTATE`, `LOGMODE`, `MSGID`.
+- Поля контента: `MSGTEXT` (XML/текст ответа), `LOGTEXT` (сетевые/технические сообщения).
+- Транспортные поля: `METHOD`, `URI`, `ACTION`, `PARENTLOGID`, `GRPID`.
+- Служебные даты: `CREATEDATE`, `MODIFYDATE`.
+- Индексы для ETL-критичны: `IDX_EXCHANGELOG_LOGID`, `EXCHANGELOG_MSGID`, `EXCHANGELOG_LOGDATE`.
+
+### EGISZ_MESSAGES (метаданные сообщения)
+- Ключевые поля: `EGMID`, `MSGID`.
+- Метаданные: `REPLYTO`, `CREATEDATE`, `DOCUMENTID`.
+- Важно: `DOCUMENTID` сохраняется как metadata и не используется как тяжелый join-ключ в source query.
+
+### EGISZ_LICENSES (справочник лицензий/организаций)
+- Поля: `ID`, `SERVICE_TYPE`, `JID`, `MO_UID`, `MO_DOMEN`, `BDATE`, `FDATE`, `KIND`, `MODIFYDATE`.
+- Текущая стратегия: для ускорения extraction не участвует в source query Firebird; обогащение выполняется на этапе ETL/warehouse.
+
+### JPERSONS (справочник ЮЛ)
+- Ключевые поля для интеграционного контекста: `JID`, `JNAME`, `FIR_OID` и др.
+- В текущем быстром source-query не используется напрямую.
+
+### Контроль отсутствия несуществующих полей
+- Подтверждено по схеме источника:
+  - в `EXCHANGELOG` нет полей `JID` и `KIND`;
+  - в `EGISZ_MESSAGES` нет поля `MSGTEXT`.
+- В коде source query эти обращения исключены; используются только существующие поля.
+
+## Модель данных PostgreSQL
+Ключевые таблицы:
+- `dim_clinics`
+- `dim_services`
+- `fact_transactions`
+- `egisz_errors`
+- `dim_error_costs`
+- `app_config`
+
+Базовый bootstrap-скрипт: `postgres/init/001_schema.sql`.
+Runtime-эволюция схемы выполняется backend-сервисом (`ensureSchema()`).
+
+## Производительность и критерии
+Целевой критерий ETL extraction:
+- первая страница (`FIRST 200`) должна загружаться < 1 секунды на корректно индексированном источнике.
+
+Практический контроль:
+1. Проверить индексы на `EXCHANGELOG(LOGID)` и `EXCHANGELOG(MSGID)`.
+2. Проверить индекс на `EGISZ_MESSAGES(MSGID)`.
+3. Проверить `PLAN`/`EXPLAIN` для source query.
+
+## Операционные команды
+```powershell
+# статус контейнеров
+docker compose ps
+
+# backend логи
+docker compose logs -f backend
+
+# frontend логи
+docker compose logs -f frontend
+
+# metabase логи
+docker compose logs -f metabase
+
+# пересборка и перезапуск
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+## Типовые инциденты и диагностика
+- ETL завис на `0 processed`:
+  - проверить `GET /api/reports/etl-status`
+  - проверить backend-логи по page fetch
+  - проверить таймауты и доступность Firebird
+- Frontend показывает подключение, но отчетов нет:
+  - проверить `GET /api/database/check`
+  - проверить `GET /api/reports/sync-status`
+- Изменения SQL/init не видны:
+  - init-скрипты `postgres/init/*.sql` выполняются только на первом init volume
+  - для существующего volume rely на runtime-миграции backend
+
+## Безопасность и эксплуатационные замечания
+- Значения учетных данных по умолчанию обязательны к замене в корпоративном контуре.
+- `host.docker.internal` используется backend-контейнером для доступа к внешнему Firebird.
+- Public Metabase (`:3002`) предназначен для публикации дашбордов; доступ должен контролироваться на уровне периметра.
+
+## Внутренние ссылки
+- Архитектурный манифест: [AGENTS.md](./AGENTS.md)
+- Схема DWH: `postgres/init/001_schema.sql`
+- Runtime схема/вьюхи: `backend/src/services/postgres.service.ts`
+- Source query: `backend/src/utils/validation.ts`
+- ETL parsing: `backend/src/services/etl.service.ts`

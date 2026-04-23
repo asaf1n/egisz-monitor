@@ -82,6 +82,46 @@ export class ReportsController {
     response.status(200).json(this.etlService.getStatus());
   };
 
+  getSyncStatus = async (_request: Request, response: Response): Promise<void> => {
+    try {
+      const status = await this.postgresService.getSyncStatus();
+      const etlStatus = this.etlService.getStatus();
+      response.status(200).json({
+        ...status,
+        progress: {
+          current: etlStatus.processedRows,
+          total: etlStatus.totalRows,
+          percent: etlStatus.progressPercent
+        },
+        progressPercent: etlStatus.progressPercent,
+        processedRows: etlStatus.processedRows,
+        totalRows: etlStatus.totalRows,
+        etlStatus: etlStatus.status,
+        etlStage: etlStatus.stage
+      });
+    } catch (error) {
+      const etlStatus = this.etlService.getStatus();
+      response.status(200).json({
+        totalRecords: 0,
+        successRecords: 0,
+        errorRecords: 0,
+        lastSyncDate: null,
+        progress: {
+          current: etlStatus.processedRows,
+          total: etlStatus.totalRows,
+          percent: etlStatus.progressPercent
+        },
+        progressPercent: etlStatus.progressPercent,
+        processedRows: etlStatus.processedRows,
+        totalRows: etlStatus.totalRows,
+        etlStatus: etlStatus.status,
+        etlStage: etlStatus.stage,
+        degraded: true,
+        message: error instanceof Error ? error.message : "Failed to load sync status"
+      });
+    }
+  };
+
   getKpi = async (_request: Request, response: Response): Promise<void> => {
     const period = this.getReportPeriod(_request);
 
@@ -323,12 +363,12 @@ export class ReportsController {
 
     return `
       SELECT
-        COALESCE(NULLIF(TRIM(ua.error_category_ru), ''), 'Неизвестная') AS category,
+        COALESCE(NULLIF(TRIM(ua.error_category), ''), 'Неизвестная') AS category,
         COUNT(*)::BIGINT AS count
       FROM ${unifiedAnalytics} ua
       WHERE ua.status = 'error'
         AND ${this.buildDateFilter(period, "ua.transaction_date")}
-      GROUP BY COALESCE(NULLIF(TRIM(ua.error_category_ru), ''), 'Неизвестная')
+      GROUP BY COALESCE(NULLIF(TRIM(ua.error_category), ''), 'Неизвестная')
       ORDER BY count DESC, category ASC
     `;
   }
@@ -542,6 +582,7 @@ export function createReportsRouter(controller: ReportsController): Router {
   router.get("/vpn-node-status", controller.getVpnNodeStatus);
   router.get("/system-health", controller.getSystemHealth);
   router.get("/etl-status", controller.getEtlStatus);
+  router.get("/sync-status", controller.getSyncStatus);
   router.post("/run-etl", controller.runEtl);
 
   return router;

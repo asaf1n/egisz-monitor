@@ -8,12 +8,12 @@
 ARG VERSION=dev
 ARG BUILD_DATE=unknown
 ARG COMMIT_SHA=unknown
-ARG NODE_VERSION=18.19.0
+ARG NODE_VERSION=18
 
 # ============================================================================
 # Stage 1: Dependency resolver
 # Purpose: Separate dependency installation for Docker cache reuse
-FROM node:${NODE_VERSION}-alpine AS deps
+FROM node:18-alpine AS deps
 
 WORKDIR /app
 
@@ -26,7 +26,7 @@ RUN npm ci --audit=false
 # ============================================================================
 # Stage 2: Builder
 # Purpose: Compile TypeScript, include devDependencies
-FROM node:${NODE_VERSION}-alpine AS builder
+FROM node:18-alpine AS builder
 
 ARG VERSION
 ARG BUILD_DATE
@@ -47,13 +47,10 @@ COPY src ./src
 # Compile TypeScript to JavaScript
 RUN npm run build
 
-# Type check (optional but recommended)
-RUN npm run type-check || true
-
 # ============================================================================
 # Stage 3: Runtime (Production)
 # Purpose: Minimal production image with only production dependencies and compiled code
-FROM node:${NODE_VERSION}-alpine
+FROM node:18-alpine
 
 ARG VERSION
 ARG BUILD_DATE

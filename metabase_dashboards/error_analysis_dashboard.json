@@ -1,76 +1,65 @@
 {
-  "name": "Анализ ошибок EGISZ",
-  "description": "Детальный разбор ошибок ЕГИСЗ: наиболее частые инциденты, разрез по клиникам и оценка роста проблем по сравнению с предыдущим окном.",
+  "name": "Технический анализ",
+  "description": "Технический мониторинг EGISZ: матрица ошибок, heatmap доступности и топ критических нормализованных инцидентов.",
   "collection_id": null,
   "cards": [
     {
-      "name": "Топ ошибок по частоте",
-      "description": "Наиболее частые тексты ошибок за последние 30 дней. Подходит для поиска массовых и повторяющихся проблем.",
+      "name": "Матрица ошибок",
+      "description": "Pivot-матрица KIND x error_category за 30 дней.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT\n    ua.error_text AS \"Текст ошибки\",\n    COUNT(*)::bigint AS \"Частота\",\n    COUNT(DISTINCT ua.clinic_id)::bigint AS \"Количество клиник\",\n    MAX(ua.transaction_date) AS \"Последний раз\"\nFROM public.v_unified_analytics AS ua\nWHERE ua.is_error\n  AND ua.transaction_date >= NOW() - INTERVAL '30 days'\nGROUP BY ua.error_text\nORDER BY 2 DESC\nLIMIT 50;"
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_type), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"KIND\", COALESCE(NULLIF(TRIM(ua.error_category), ''), 'Прочие ошибки') AS \"Категория ошибки\", COUNT(*)::bigint AS \"Количество\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1 ASC, 3 DESC;"
         },
         "database": 1
       },
       "display": "table",
       "visualization_settings": {
-        "table.pivot_column": null,
-        "table.cell_column": null
+        "table.pivot_column": "Категория ошибки",
+        "table.cell_column": "Количество"
       },
       "sizeX": 12,
-      "sizeY": 8,
+      "sizeY": 4,
       "row": 0,
       "col": 0
     },
     {
-      "name": "Типы ошибок по клиентам",
-      "description": "Показывает распределение ошибок по клиникам, категориям и подкатегориям для локализации проблемных направлений.",
+      "name": "Heatmap доступности",
+      "description": "Почасовая плотность ошибок по JID за 7 дней.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT\n    ua.clinic_display_name AS \"Название клиники\",\n    ua.error_category_ru AS \"Категория ошибки\",\n    ua.error_subcategory AS \"Подкатегория ошибки\",\n    COUNT(*)::bigint AS \"Количество ошибок\",\n    MAX(ua.transaction_date) AS \"Последняя ошибка\"\nFROM public.v_unified_analytics AS ua\nWHERE ua.is_error\n  AND ua.transaction_date >= NOW() - INTERVAL '30 days'\nGROUP BY ua.clinic_display_name, ua.error_category_ru, ua.error_subcategory\nORDER BY 4 DESC, ua.clinic_display_name ASC\nLIMIT 20;"
+          "query": "SELECT date_trunc('hour', ua.transaction_date) AS \"Час\", ua.jid AS \"JID\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '7 days' GROUP BY 1, 2 ORDER BY 1 ASC, 2 ASC;"
         },
         "database": 1
       },
-      "display": "table",
+      "display": "heatmap",
       "visualization_settings": {
-        "table.pivot_column": null,
-        "table.cell_column": null
+        "graph.dimensions": ["Час", "JID"],
+        "graph.metrics": ["Ошибки"]
       },
       "sizeX": 12,
-      "sizeY": 8,
+      "sizeY": 4,
       "row": 0,
       "col": 12
     },
     {
-      "name": "Рост инцидентов по клиникам",
-      "description": "Показывает клиники, у которых количество инцидентов выросло относительно предыдущих 24 часов.",
+      "name": "Топ критических ошибок",
+      "description": "Группировка по clean_error_text для выявления повторяемых проблем.",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "WITH current_window AS (\n    SELECT\n        ua.clinic_id,\n        ua.clinic_display_name,\n        COUNT(*)::bigint AS incidents_last_24h\n    FROM public.v_unified_analytics AS ua\n    WHERE ua.is_error\n      AND ua.transaction_date >= NOW() - INTERVAL '24 hours'\n    GROUP BY ua.clinic_id, ua.clinic_display_name\n),\nprevious_window AS (\n    SELECT\n        ua.clinic_id,\n        COUNT(*)::bigint AS incidents_prev_24h\n    FROM public.v_unified_analytics AS ua\n    WHERE ua.is_error\n      AND ua.transaction_date >= NOW() - INTERVAL '48 hours'\n      AND ua.transaction_date < NOW() - INTERVAL '24 hours'\n    GROUP BY ua.clinic_id\n)\nSELECT\n    cw.clinic_display_name AS \"Название клиники\",\n    cw.incidents_last_24h AS \"Инциденты за последние 24ч\",\n    COALESCE(pw.incidents_prev_24h, 0) AS \"Инциденты за предыдущие 24ч\",\n    cw.incidents_last_24h - COALESCE(pw.incidents_prev_24h, 0) AS \"Абсолютный рост инцидентов\",\n    CASE\n        WHEN COALESCE(pw.incidents_prev_24h, 0) = 0 THEN NULL\n        ELSE ROUND(\n            100.0 * (cw.incidents_last_24h - pw.incidents_prev_24h) / pw.incidents_prev_24h,\n            2\n        )\n    END AS \"Процент роста инцидентов\"\nFROM current_window AS cw\nLEFT JOIN previous_window AS pw\n    ON pw.clinic_id = cw.clinic_id\nORDER BY 4 DESC, cw.incidents_last_24h DESC, cw.clinic_display_name ASC\nLIMIT 20;"
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.clean_error_text), ''), '[пусто]') AS \"Нормализованный текст\", COALESCE(NULLIF(TRIM(ua.error_category), ''), 'Прочие ошибки') AS \"Категория\", COUNT(*)::bigint AS \"Частота\", COUNT(DISTINCT ua.jid)::bigint AS \"Клиник\", MAX(ua.transaction_date) AS \"Последний инцидент\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY \"Частота\" DESC, 1 ASC LIMIT 50;"
         },
         "database": 1
       },
-      "display": "bar",
-      "visualization_settings": {
-        "graph.dimensions": ["Название клиники"],
-        "graph.metrics": ["Абсолютный рост инцидентов"]
-      },
+      "display": "table",
+      "visualization_settings": {},
       "sizeX": 24,
-      "sizeY": 6,
-      "row": 8,
+      "sizeY": 5,
+      "row": 4,
       "col": 0
     }
   ],
-  "parameters": [
-    {
-      "name": "Период анализа",
-      "slug": "period",
-      "id": "period_param",
-      "type": "date/range",
-      "default": ["30 days ago", "today"]
-    }
-  ]
+  "parameters": []
 }
