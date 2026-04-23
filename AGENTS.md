@@ -239,3 +239,9 @@ ormalizeJoinQuery() now auto-falls back to default query when legacy non-existen
 - Error analytics updated: `Журнал ошибок` renamed from “последних”, date-window filters added to all date-driven cards, and a dedicated `Топ ошибок из ns2:message` card now groups by error type/code/normalized text with explicit `JID`.
 - ETL kind fallback hardened: `row.LICENSE_KIND` now participates in primary `kindCode` resolution before `UNKNOWN`, reducing unknown SEMD type outcomes when dictionary mapping is absent.
 - Clinic label OID guardrail: unresolved/non-FRMO-like synthetic `mo_uid` values are no longer rendered as real OID in `v_unified_analytics`; fallback output is `[OID не найден]`.
+
+## v1.9.3 (2026-04-23)
+
+- ETL unblock: default Firebird extraction query reverted to flat shape (`EXCHANGELOG + EGISZ_MESSAGES`) without runtime `EGISZ_LICENSES` join, removing heavy source-side enrichment from first-page fetch path.
+- Compatibility: default query still returns `MO_UID` and `LICENSE_KIND` placeholders as `NULL`-cast fields, so backend parser contract remains stable.
+- Runtime validation: ETL no longer stalls at `extracting 0/0`; count and paged fetch now advance (page 1+ completes in seconds instead of timing out at 120s).
