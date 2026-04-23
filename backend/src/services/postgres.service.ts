@@ -259,6 +259,8 @@ export class PostgresService {
           error_code VARCHAR(255),
           error_message TEXT,
           error_text TEXT,
+          local_uid VARCHAR(256),
+          reply_to TEXT,
           CONSTRAINT chk_fact_transactions_status CHECK (status IN ('success', 'error')),
           CONSTRAINT chk_fact_transactions_error_category CHECK (
             (status = 'error' AND error_category IS NOT NULL) OR
@@ -293,6 +295,14 @@ export class PostgresService {
       await client.query(`
         ALTER TABLE ${this.schemaName}.fact_transactions
         ADD COLUMN IF NOT EXISTS error_message TEXT
+      `);
+      await client.query(`
+        ALTER TABLE ${this.schemaName}.fact_transactions
+        ADD COLUMN IF NOT EXISTS local_uid VARCHAR(256)
+      `);
+      await client.query(`
+        ALTER TABLE ${this.schemaName}.fact_transactions
+        ADD COLUMN IF NOT EXISTS reply_to TEXT
       `);
 
 
@@ -699,7 +709,7 @@ export class PostgresService {
             END,
             mo_domen = COALESCE($6, mo_domen),
             jname = CASE
-              WHEN $4::VARCHAR(255) IS NOT NULL AND ($5 = TRUE OR jname IS NULL OR jname LIKE 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РєР»РёРЅРёРєР° (%)')
+              WHEN $4::VARCHAR(255) IS NOT NULL AND ($5 = TRUE OR jname IS NULL OR jname LIKE '\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u043a\u043b\u0438\u043d\u0438\u043a\u0430 (%)')
                 THEN $4::VARCHAR(255)
               ELSE jname
             END,
@@ -722,7 +732,7 @@ export class PostgresService {
     const effectiveMoUid = record.clinic.isVerified ? record.clinic.moUid : `ghost-${record.clinic.moDomen ?? record.clinic.moUid}`;
     const effectiveJname = record.clinic.isVerified
       ? record.clinic.jname
-      : `РќРµРёР·РІРµСЃС‚РЅР°СЏ РєР»РёРЅРёРєР° (${record.clinic.moDomen ?? record.clinic.moUid})`;
+      : `\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u043a\u043b\u0438\u043d\u0438\u043a\u0430 (${record.clinic.moDomen ?? record.clinic.moUid})`;
 
     const result = await client.query<{ clinic_id: number }>(
       `
@@ -785,9 +795,11 @@ export class PostgresService {
           error_category,
           error_code,
           error_message,
-          error_text
+          error_text,
+          local_uid,
+          reply_to
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (original_log_id) DO UPDATE
         SET
           clinic_id = EXCLUDED.clinic_id,
@@ -797,7 +809,9 @@ export class PostgresService {
           error_category = EXCLUDED.error_category,
           error_code = EXCLUDED.error_code,
           error_message = EXCLUDED.error_message,
-          error_text = EXCLUDED.error_text
+          error_text = EXCLUDED.error_text,
+          local_uid = EXCLUDED.local_uid,
+          reply_to = EXCLUDED.reply_to
       `,
       [
         clinicId,
@@ -808,7 +822,9 @@ export class PostgresService {
         record.fact.errorCategory,
         record.fact.errorCode,
         record.fact.errorMessage,
-        record.fact.errorText
+        record.fact.errorText,
+        record.fact.localUid,
+        record.fact.replyTo
       ]
     );
   }
@@ -873,8 +889,26 @@ export class PostgresService {
     `);
     await client.query(`
       UPDATE ${this.schemaName}.dim_clinics
+      SET jname = regexp_replace(
+        jname,
+        '^РќРµРёР·РІРµСЃС‚РЅР°СЏ РєР»РёРЅРёРєР° \\(',
+        '\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u043a\u043b\u0438\u043d\u0438\u043a\u0430 ('
+      )
+      WHERE jname ~ '^РќРµРёР·РІРµСЃС‚РЅР°СЏ РєР»РёРЅРёРєР° \\('
+    `);
+    await client.query(`
+      UPDATE ${this.schemaName}.dim_clinics
+      SET jname = regexp_replace(
+        jname,
+        '^РќРµ СЃРѕРїРѕСЃС‚Р°РІР»РµРЅРѕ \\(РЅРµС‚ JID\\) \\[',
+        '\u041d\u0435 \u0441\u043e\u043f\u043e\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u043e (\u043d\u0435\u0442 JID) ['
+      )
+      WHERE jname ~ '^РќРµ СЃРѕРїРѕСЃС‚Р°РІР»РµРЅРѕ \\(РЅРµС‚ JID\\) \\['
+    `);
+    await client.query(`
+      UPDATE ${this.schemaName}.dim_clinics
       SET is_verified = CASE
-        WHEN jname IS NOT NULL AND jname NOT LIKE 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РєР»РёРЅРёРєР° (%)' THEN TRUE
+        WHEN jname IS NOT NULL AND jname NOT LIKE '\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u043a\u043b\u0438\u043d\u0438\u043a\u0430 (%)' THEN TRUE
         ELSE COALESCE(is_verified, FALSE)
       END
     `);
@@ -950,8 +984,18 @@ export class PostgresService {
   }
 
   private async normalizeErrorCategories(client: PoolClient): Promise<void> {
-    const networkAliases = ["network", "РЎРµС‚РµРІР°СЏ", "Р РЋР ВµРЎвЂљР ВµР Р†Р В°РЎРЏ"];
-    const asyncAliases = ["async", "РђСЃРёРЅС…СЂРѕРЅРЅР°СЏ", "Р С’РЎРѓР С‘Р Р…РЎвЂ¦РЎР‚Р С•Р Р…Р Р…Р В°РЎРЏ"];
+    const networkAliases = [
+      "network",
+      "\u0421\u0435\u0442\u0435\u0432\u0430\u044f",
+      "РЎРµС‚РµРІР°СЏ",
+      "Р РЋР ВµРЎвЂљР ВµР Р†Р В°РЎРЏ"
+    ];
+    const asyncAliases = [
+      "async",
+      "\u0410\u0441\u0438\u043d\u0445\u0440\u043e\u043d\u043d\u0430\u044f",
+      "РђСЃРёРЅС…СЂРѕРЅРЅР°СЏ",
+      "Р С’РЎРѓР С‘Р Р…РЎвЂ¦РЎР‚Р С•Р Р…Р Р…Р В°РЎРЏ"
+    ];
 
     await client.query(
       `
@@ -1078,6 +1122,10 @@ export class PostgresService {
       ON ${this.schemaName}.fact_transactions(original_log_id)
     `);
     await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_fact_trans_local_uid
+      ON ${this.schemaName}.fact_transactions(local_uid)
+    `);
+    await client.query(`
       CREATE INDEX IF NOT EXISTS idx_egisz_errors_clinic_id
       ON ${this.schemaName}.egisz_errors(clinic_id)
     `);
@@ -1194,24 +1242,25 @@ export class PostgresService {
         ft.status,
         (ft.status = 'success') AS is_success,
         (ft.status = 'error') AS is_error,
+        ft.local_uid,
+        ft.reply_to,
         ft.clinic_id,
         dc.jid,
         dc.jid AS clinic_jid,
         dc.jname,
         dc.is_verified,
-        COALESCE(dc.jname, 'JID: ' || ft.clinic_id::TEXT) AS clinic_label,
-        COALESCE(dc.jname, 'JID: ' || ft.clinic_id::TEXT) AS clinic_display_name,
+        COALESCE(NULLIF(TRIM(dc.jname), ''), 'Клиника JID: ' || dc.jid::text) AS clinic_label,
+        COALESCE(NULLIF(TRIM(dc.jname), ''), 'Клиника JID: ' || dc.jid::text) AS clinic_display_name,
         dc.mo_uid,
         dc.mo_domen,
         ft.service_id,
         ds.kind AS service_kind,
-        ds.kind AS document_type,
+        ds.kind AS document_kind,
         ds.service_type,
         ds.description AS service_description,
         ${this.buildSemdNameSql("ds.kind")} AS service_kind_name,
         COALESCE(${this.buildSemdNameSql("ds.kind")}, ds.description, ds.kind) AS document_name,
-        COALESCE(${this.buildSemdNameSql("ds.kind")}, ds.description, ds.service_type, ds.kind) AS service_display_name,
-        CASE
+        COALESCE(${this.buildSemdNameSql("ds.kind")}, ds.description, ds.service_type, ds.kind) AS service_display_name,        CASE
           WHEN ft.status <> 'error' THEN NULL
           ELSE ${businessErrorCategorySql}
         END AS error_category,
@@ -1357,7 +1406,7 @@ export class PostgresService {
         ua.jname,
         ua.clinic_display_name,
         ua.mo_uid,
-        ua.document_type,
+        ua.document_kind,
         ua.document_name,
         COUNT(*) AS total_requests,
         COUNT(*) FILTER (WHERE ua.is_success) AS successful_requests,
@@ -1374,7 +1423,7 @@ export class PostgresService {
         ua.jname,
         ua.clinic_display_name,
         ua.mo_uid,
-        ua.document_type,
+        ua.document_kind,
         ua.document_name
     `);
     await client.query(`DROP VIEW IF EXISTS ${this.schemaName}.v_service_hourly_health CASCADE`);
@@ -1581,7 +1630,7 @@ export class PostgresService {
       .replace(/\bl\.LID\b/gi, "l.ID")
       .replace(/\bj\.MO_UID\b/gi, "l.MO_UID");
 
-    const hasInvalidLegacyColumns = /\be\.JID\b|\be\.KIND\b|\bm\.MSGTEXT\b/i.test(normalized);
+    const hasInvalidLegacyColumns = /\be\.JID\b|\be\.MO_UID\b|\be\.KIND\b|\bm\.MSGTEXT\b/i.test(normalized);
 
     if (hasInvalidLegacyColumns) {
       console.warn("[Firebird] Detected legacy join query with non-existent columns. Falling back to default query.");

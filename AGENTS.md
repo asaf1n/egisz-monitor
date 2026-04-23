@@ -149,3 +149,55 @@ ormalizeJoinQuery() now auto-falls back to default query when legacy non-existen
 - Dynamics/clinic visuals: dashboard queries switched to clinic-name labels (`clinic_label`) instead of raw clinic IDs in grouping/legends.
 - Error analytics: dashboard table switched to structured error fields (`error_code`, `error_message`) with Top-20 view by clinic label.
 - Dashboard JSON cleanup: ID-oriented columns are configured with neutral display settings (`display_as: null`) where applicable, keeping name-first presentation.
+
+## v1.6.1 (2026-04-23)
+
+- Documentation corrected: removed invalid assumption `EGISZ_MESSAGES.DOCUMENTID -> EGISZ_LICENSES.ID` from project docs.
+- Integration linkage clarified: canonical chain is `EGISZ_MESSAGES.MSGID -> EXCHANGELOG.MSGID`, `EGISZ_MESSAGES.REPLYTO -> EGISZ_LICENSES.MO_DOMEN`, `EGISZ_LICENSES.JID -> JPERSONS.JID`.
+- Domain semantics documented: `REPLYTO` / `MO_DOMEN` store clinic callback hosts like `http://gost-<JID>.infoclinica.lan:<port>`, allowing JID extraction for downstream clinic binding.
+
+## v1.6.2 (2026-04-23)
+
+- ETL clinic binding aligned with domain-based linkage: runtime now uses `REPLYTO/MO_DOMEN -> host -> JID` as the primary fallback when `row.JID` is absent.
+- XML `organization` remains a secondary fallback only after host-derived JID resolution.
+- Verified clinic marking now accepts resolved callback domain presence (`clinicDomain`) instead of only explicit source-domain fields.
+
+## v1.6.3 (2026-04-23)
+
+- Dashboard JSON provisioning hardened: every `metabase_dashboards/*.json` card now carries `table_ref: "v_unified_analytics"` so Metabase native cards can resolve the correct runtime `table_id` during import.
+- Dashboard UI cleanup extended: technical identifier columns (`clinic_id`, `clinic_jid`, `jid`, `mo_uid`, `original_LOGID`, `original_log_id`, `service_id`, `transaction_id`) now default to `display_as: null` in dashboard card visualization settings.
+- Validation pass completed: dashboard JSON files were re-parsed successfully after cleanup to guard against trailing commas and bracket mismatches.
+
+## v1.6.4 (2026-04-23)
+
+- Full resync operation executed: `fact_transactions` and `egisz_errors` were truncated, and `app_config.last_processed_id` was reset to `0` for a clean ETL restart.
+- Runtime Firebird extraction for full-history sync was switched to persisted flat source SQL in `app_config.firebird_connection.joinQuery` (`EXCHANGELOG + EGISZ_MESSAGES`, ordered by `LOGID ASC`) to start from the beginning of the log and avoid heavy source-side enrichment joins.
+- Operational timeout tuning applied: local runtime env now uses `FIREBIRD_ETL_QUERY_TIMEOUT_MS=120000` in `.env` to prevent premature ETL page timeout on slow source reads.
+
+## v1.6.5 (2026-04-23)
+
+- Environment templates aligned with runtime timeout tuning: `.env.example` and `backend/.env.example` now set `FIREBIRD_ETL_QUERY_TIMEOUT_MS=120000` so freshly generated env files keep full-sync behavior consistent after rebuild.
+
+## v1.7 (2026-04-23)
+
+- Parsing contract updated: `DOCUMENTID` is persisted as metadata field `local_uid` and is no longer used for clinic resolution logic.
+- Identity mapping is now strict and independent: `jid <- row.JID (else 0)`, `mo_uid <- row.MO_UID || XML <ns2:organization>`, without cross-dependency between JID and MO_UID.
+- Backend parsing expanded: `local_uid <- row.DOCUMENTID || XML <ns2:localUid>`, `reply_to <- row.REPLYTO || XML <To>`.
+- Warehouse update: `fact_transactions` now stores `local_uid` and `reply_to`; `v_unified_analytics` exposes both fields for Metabase filtering.
+- Source SQL policy reinforced: Firebird query remains flat/raw (no CASE/parsing logic in source SQL), parsing is centralized in Backend/TypeScript.
+
+## v1.7.1 (2026-04-23)
+
+- Firebird default source SQL fixed: removed non-existent `EXCHANGELOG.JID`, `EXCHANGELOG.MO_UID`, `EXCHANGELOG.KIND` from `buildDefaultFirebirdJoinQuery()`.
+- Guardrail hardened in `normalizeJoinQuery()`: persisted custom queries referencing non-existent legacy columns (`e.JID`, `e.MO_UID`, `e.KIND`, `m.MSGTEXT`) now auto-fallback to default flat query.
+- Runtime safety: ETL no longer fails at extraction start due to invalid EXCHANGELOG column assumptions in default/legacy query text.
+
+## v1.8.1 (2026-04-23)
+
+- CORRECTED IDENTITY: JID is the primary fallback for clinic name. MO_UID (OID) is handled as a separate federal attribute. Accessibility metrics implemented via reply_to grouping. LocalUID search enabled.
+
+## v1.8.2 (2026-04-23)
+
+- Encoding hardening: fixed mojibake-prone clinic label literals in backend clinic upsert/migration logic (`Неизвестная клиника`, `Не сопоставлено (нет JID)`), so newly written labels are UTF-8 clean.
+- Data repair on startup: added migration updates in `migrateClinicDirectory()` to rewrite already persisted mojibake clinic names to readable UTF-8 labels.
+- Backward normalization preserved: error category cleanup now recognizes both clean Cyrillic and historical mojibake aliases for `Сетевая` and `Асинхронная`.

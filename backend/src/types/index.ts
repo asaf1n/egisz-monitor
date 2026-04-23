@@ -92,6 +92,8 @@ export interface FactTransactionRecord {
   errorCode: string | null;
   errorMessage: string | null;
   errorText: string | null;
+  localUid: string | null;
+  replyTo: string | null;
 }
 
 export interface EgiszErrorRecord {

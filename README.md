@@ -135,12 +135,12 @@ docker compose logs -f backend
     - детектируются инфраструктурные паттерны `Socket error`, `Host not found`, `CA_INACCESSIBILITY`
 
 ### 3) JID/KIND и fallback
-- Источник `JID`/`KIND` — поля строки лога.
-- Если поля пустые, ETL пытается извлечь fallback из XML (`organization`, `kind`).
-- Если fallback отсутствует:
-  - запись уходит в отдельный технический контур `unresolved-jid-*` (не смешивается с верифицированными клиниками)
-  - `kind` -> `UNKNOWN`
-  - `clinic_id` в фактах/ошибках остается обязательным за счет отдельной dim-записи для несопоставленного клиента
+- Source SQL остается плоским и отдает сырые поля из `EXCHANGELOG + EGISZ_MESSAGES` без CASE/парсинга в Firebird.
+- `JID` извлекается строго из `row.JID`; если значение отсутствует, в backend используется `0` и запись помечается как несопоставленная.
+- `MO_UID` (OID) извлекается независимо от `JID`: `row.MO_UID` или XML-тег `<ns2:organization>`.
+- `local_uid` извлекается как metadata из `row.DOCUMENTID` или XML-тега `<ns2:localUid>`.
+- `reply_to` извлекается из `row.REPLYTO` или XML-тега `<To>`.
+- `DOCUMENTID` не участвует в логике определения клиники и не используется как ключ связи таблиц прокси-базы.
 
 ### 4) Категоризация ошибок в backend
 Backend присваивает категорию одной из групп:
@@ -156,6 +156,8 @@ Backend присваивает категорию одной из групп:
 - `error_code`
 - `error_message`
 - `error_text`
+- `local_uid`
+- `reply_to`
 
 Это обеспечивает совместимость отчетов и более детальную диагностику инцидентов.
 
@@ -171,21 +173,24 @@ Backend присваивает категорию одной из групп:
 ### EGISZ_MESSAGES (метаданные сообщения)
 - Ключевые поля: `EGMID`, `MSGID`.
 - Метаданные: `REPLYTO`, `CREATEDATE`, `DOCUMENTID`.
-- Важно: `DOCUMENTID` сохраняется как metadata и не используется как тяжелый join-ключ в source query.
+- Важно: `DOCUMENTID` сохраняется как metadata (`local_uid`) и не считается каноническим ключом связи с `EGISZ_LICENSES`.
+- Для backend-парсинга `REPLYTO` сохраняется дополнительно в `fact_transactions.reply_to`.
 
 ### EGISZ_LICENSES (справочник лицензий/организаций)
 - Поля: `ID`, `SERVICE_TYPE`, `JID`, `MO_UID`, `MO_DOMEN`, `BDATE`, `FDATE`, `KIND`, `MODIFYDATE`.
-- Текущая стратегия: для ускорения extraction не участвует в source query Firebird; обогащение выполняется на этапе ETL/warehouse.
+- Предметные связи:
+  - `MO_DOMEN` сопоставляется с `EGISZ_MESSAGES.REPLYTO`
+  - `JID` является внутренним идентификатором клиники
+  - `KIND` / `SERVICE_TYPE` задают семантику отправленного СЭМД
+- Текущая стратегия: для ускорения extraction таблица не участвует в дефолтном source query Firebird; корректное обогащение должно выполняться после извлечения сырых событий через доменное/JID-сопоставление.
 
 ### JPERSONS (справочник ЮЛ)
 - Ключевые поля для интеграционного контекста: `JID`, `JNAME`, `FIR_OID` и др.
-- В текущем быстром source-query не используется напрямую.
+- Используется как справочник юридических лиц после получения `JID` из связки `REPLYTO/MO_DOMEN -> EGISZ_LICENSES.JID`.
 
 ### Контроль отсутствия несуществующих полей
-- Подтверждено по схеме источника:
-  - в `EXCHANGELOG` нет полей `JID` и `KIND`;
-  - в `EGISZ_MESSAGES` нет поля `MSGTEXT`.
-- В коде source query эти обращения исключены; используются только существующие поля.
+- Также зафиксировано предметное ограничение: `EGISZ_MESSAGES.DOCUMENTID -> EGISZ_LICENSES.ID` не является валидной канонической связью для текущей базы proxy-сервиса.
+- В коде source query бизнес-парсинг исключен и перенесен в Backend/TypeScript.
 
 ## Модель данных PostgreSQL
 Ключевые таблицы:

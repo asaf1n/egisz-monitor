@@ -39,6 +39,8 @@ CREATE TABLE fact_transactions (
     error_code VARCHAR(255),
     error_message TEXT,
     error_text TEXT,
+    local_uid VARCHAR(256),
+    reply_to TEXT,
     CONSTRAINT chk_status CHECK (status IN ('success', 'error')),
     CONSTRAINT chk_error_category CHECK (
         (status = 'error' AND error_category IS NOT NULL) OR
@@ -98,6 +100,7 @@ WHERE status = 'error';
 CREATE INDEX idx_fact_trans_clinic_id ON fact_transactions(clinic_id);
 CREATE INDEX idx_fact_trans_service_id ON fact_transactions(service_id);
 CREATE INDEX idx_fact_trans_original_log_id ON fact_transactions(original_log_id);
+CREATE INDEX idx_fact_trans_local_uid ON fact_transactions(local_uid);
 CREATE INDEX idx_egisz_errors_clinic_id ON egisz_errors(clinic_id);
 CREATE INDEX idx_egisz_errors_hostname ON egisz_errors(hostname);
 CREATE INDEX idx_egisz_errors_transaction_date ON egisz_errors(transaction_date);

@@ -6,15 +6,63 @@
     {
       "name": "Карта здоровья (Heatmap)",
       "description": "Ошибки связи по JID в почасовом разрезе за 7 дней.",
+      "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT date_trunc('hour', ua.transaction_date) AS \"Час\", ua.jid AS \"JID\", COUNT(*)::bigint AS \"Ошибки связи\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.error_category = 'Ошибка связи' AND ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '7 days' GROUP BY 1, 2 ORDER BY 1, 2;"
+          "query": "SELECT date_trunc('hour', ua.transaction_date) AS \"Hour\", ua.jid AS \"JID\", COUNT(*)::bigint AS \"Network errors\" FROM public.v_unified_analytics ua WHERE ua.is_error AND (ua.error_category = 'Infrastructure' OR ua.error_subcategory IN ('timeout', 'connection_refused', 'proxy')) AND ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '7 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY 1, 2 ORDER BY 1, 2;",
+          "template-tags": {
+            "clinic_jid": {
+              "id": "clinic_jid",
+              "name": "clinic_jid",
+              "display-name": "Client ID (JID)",
+              "type": "number",
+              "required": false
+            },
+            "organization_oid": {
+              "id": "organization_oid",
+              "name": "organization_oid",
+              "display-name": "Organization OID (Federal)",
+              "type": "text",
+              "required": false
+            }
+          }
         },
         "database": 1
       },
       "display": "heatmap",
-      "visualization_settings": {},
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"clinic_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"clinic_jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"mo_uid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_LOGID\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_log_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"service_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"transaction_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"local_uid\"]": {
+            "type": "text",
+            "display_as": null
+          }
+        }
+      },
       "sizeX": 12,
       "sizeY": 4,
       "row": 0,
@@ -23,17 +71,68 @@
     {
       "name": "Анализ НСИ",
       "description": "KIND, по которым чаще встречаются ошибки заполнения реквизитов/НСИ.",
+      "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_type), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"KIND\", COUNT(*)::bigint AS \"Ошибки НСИ\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.error_category = 'Ошибка заполнения реквизитов/НСИ' AND ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY \"Ошибки НСИ\" DESC;"
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_kind), ''), NULLIF(TRIM(ua.service_kind), ''), 'N/A') AS \"KIND\", COUNT(*)::bigint AS \"Validation/NSI errors\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.error_subcategory = 'validation' AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY 1 ORDER BY \"Validation/NSI errors\" DESC;",
+          "template-tags": {
+            "clinic_jid": {
+              "id": "clinic_jid",
+              "name": "clinic_jid",
+              "display-name": "Client ID (JID)",
+              "type": "number",
+              "required": false
+            },
+            "organization_oid": {
+              "id": "organization_oid",
+              "name": "organization_oid",
+              "display-name": "Organization OID (Federal)",
+              "type": "text",
+              "required": false
+            }
+          }
         },
         "database": 1
       },
       "display": "bar",
       "visualization_settings": {
-        "graph.dimensions": ["KIND"],
-        "graph.metrics": ["Ошибки НСИ"]
+        "graph.dimensions": [
+          "KIND"
+        ],
+        "graph.metrics": [
+          "Ошибки НСИ"
+        ],
+        "column_settings": {
+          "[\"name\",\"clinic_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"clinic_jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"mo_uid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_LOGID\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_log_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"service_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"transaction_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"local_uid\"]": {
+            "type": "text",
+            "display_as": null
+          }
+        }
       },
       "sizeX": 12,
       "sizeY": 4,
@@ -43,20 +142,146 @@
     {
       "name": "Нормализованный лог",
       "description": "Список ошибок, очищенный от host/IP/динамических ID, для передачи в разработку.",
+      "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT ua.clean_error_text AS \"clean_error_text\", ua.error_category AS \"Категория\", COUNT(*)::bigint AS \"Частота\", COUNT(DISTINCT ua.jid)::bigint AS \"Клиник\", MAX(ua.transaction_date) AS \"Последний инцидент\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY ua.clean_error_text, ua.error_category ORDER BY \"Частота\" DESC LIMIT 100;"
+          "query": "SELECT ua.clean_error_text AS \"clean_error_text\", ua.error_category AS \"category\", COUNT(*)::bigint AS \"frequency\", COUNT(DISTINCT ua.jid)::bigint AS \"clinics\", MAX(ua.transaction_date) AS \"last_incident\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY ua.clean_error_text, ua.error_category ORDER BY \"frequency\" DESC LIMIT 100;",
+          "template-tags": {
+            "clinic_jid": {
+              "id": "clinic_jid",
+              "name": "clinic_jid",
+              "display-name": "Client ID (JID)",
+              "type": "number",
+              "required": false
+            },
+            "organization_oid": {
+              "id": "organization_oid",
+              "name": "organization_oid",
+              "display-name": "Organization OID (Federal)",
+              "type": "text",
+              "required": false
+            }
+          }
         },
         "database": 1
       },
       "display": "table",
-      "visualization_settings": {},
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"clinic_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"clinic_jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"mo_uid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_LOGID\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_log_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"service_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"transaction_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"local_uid\"]": {
+            "type": "text",
+            "display_as": null
+          }
+        }
+      },
       "sizeX": 24,
       "sizeY": 5,
       "row": 4,
       "col": 0
+    },
+    {
+      "name": "Node Stability by reply_to",
+      "description": "Network incidents grouped by external clinic address.",
+      "table_ref": "v_unified_analytics",
+      "dataset_query": {
+        "type": "native",
+        "native": {
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.reply_to), ''), '[no_reply_to]') AS \"reply_to\", COUNT(*)::bigint AS \"Network incidents\", COUNT(DISTINCT ua.clinic_jid)::bigint AS \"Clinics\", MAX(ua.transaction_date) AS \"Last incident\" FROM public.v_unified_analytics ua WHERE ua.is_error AND (ua.error_category = 'Infrastructure' OR ua.error_subcategory IN ('timeout', 'connection_refused', 'proxy')) AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY 1 ORDER BY \"Network incidents\" DESC, \"reply_to\" ASC LIMIT 50;",
+          "template-tags": {
+            "clinic_jid": {
+              "id": "clinic_jid",
+              "name": "clinic_jid",
+              "display-name": "Client ID (JID)",
+              "type": "number",
+              "required": false
+            },
+            "organization_oid": {
+              "id": "organization_oid",
+              "name": "organization_oid",
+              "display-name": "Organization OID (Federal)",
+              "type": "text",
+              "required": false
+            }
+          }
+        },
+        "database": 1
+      },
+      "display": "table",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"clinic_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"clinic_jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"mo_uid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"local_uid\"]": {
+            "type": "text",
+            "display_as": null
+          },
+          "[\"name\",\"original_LOGID\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_log_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"service_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"transaction_id\"]": {
+            "display_as": null
+          }
+        }
+      },
+      "sizeX": 24,
+      "sizeY": 4,
+      "row": 9,
+      "col": 0
     }
   ],
-  "parameters": []
+  "parameters": [
+    {
+      "id": "clinic_jid_filter",
+      "name": "Client ID (JID)",
+      "slug": "clinic_jid_filter",
+      "type": "number"
+    },
+    {
+      "id": "organization_oid_filter",
+      "name": "Organization OID (Federal)",
+      "slug": "organization_oid_filter",
+      "type": "text"
+    }
+  ]
 }

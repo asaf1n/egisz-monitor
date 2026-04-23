@@ -10,10 +10,6 @@ DB_PASSWORD="${DB_PASSWORD:-egisz}"
 DB_DISPLAY_NAME="${DB_DISPLAY_NAME:-EGISZ Reports}"
 
 ROOT_COLLECTION_NAME="EGISZ Мониторинг"
-BUSINESS_COLLECTION_NAME="1. Статистика отправки"
-TECH_COLLECTION_NAME="2. Технические метрики"
-BUSINESS_DASHBOARD_NAME="Бизнес-мониторинг"
-TECH_DASHBOARD_NAME="Технический анализ"
 
 log_info() {
   echo "[dashboards] $1" >&2
@@ -42,6 +38,10 @@ api_request() {
     echo "Metabase API ${method} ${path} failed with HTTP ${HTTP_CODE}" >&2
     echo "${RESPONSE_BODY}" >&2
     return 1
+  else
+    if [[ "${method}" == "POST" && ( "${path}" == "/api/card" || "${path}" == "/api/dashboard" ) ]]; then
+      echo "Metabase API ${method} ${path} successful with HTTP ${HTTP_CODE} OK" >&2
+    fi
   fi
 
   printf '%s' "${RESPONSE_BODY}"
@@ -153,13 +153,52 @@ ensure_app_database() {
 
   db_id="$(api_request POST "/api/database" "${payload}" | jq -r '.id // empty')"
 
-  if [ -z "${db_id}" ]; then
+  if [ -z "${db_id}" ] || [ "${db_id}" = "null" ]; then
     echo "Failed to register application database" >&2
     exit 1
   fi
 
   api_request POST "/api/database/${db_id}/sync_schema" "{}" >/dev/null || true
   printf '%s' "${db_id}"
+}
+
+get_database_metadata() {
+  if [ -z "${APP_DB_METADATA_JSON:-}" ]; then
+    APP_DB_METADATA_JSON="$(api_request GET "/api/database/${APP_DB_ID}/metadata?include_hidden=true")"
+  fi
+
+  printf '%s' "${APP_DB_METADATA_JSON}"
+}
+
+resolve_table_id() {
+  local table_ref="$1"
+
+  if [ -z "${table_ref}" ] || [ "${table_ref}" = "null" ]; then
+    return 0
+  fi
+
+  local table_id
+  table_id="$(
+    get_database_metadata | jq -r --arg tableRef "${table_ref}" '
+      [
+        .tables[]?
+        | select(
+            .name == $tableRef
+            or ((.schema // "public") + "." + .name) == $tableRef
+          )
+      ]
+      | sort_by(.id)
+      | last
+      | .id // empty
+    '
+  )"
+
+  if [ -z "${table_id}" ] || [ "${table_id}" = "null" ]; then
+    echo "Failed to resolve Metabase table ID for ${table_ref}" >&2
+    exit 1
+  fi
+
+  printf '%s' "${table_id}"
 }
 
 create_collection() {
@@ -174,8 +213,8 @@ create_collection() {
       --arg name "${name}" \
       --arg description "${description}" \
       --arg color "${color}" \
-      --argjson parentId "${parent_id}" \
-      '{name: $name, description: $description, color: $color, parent_id: $parentId}')"
+      --arg parentId "${parent_id}" \
+      '{name: $name, description: $description, color: $color, parent_id: ($parentId | tonumber)}') "
   else
     payload="$(jq -n \
       --arg name "${name}" \
@@ -188,62 +227,136 @@ create_collection() {
 }
 
 create_card() {
-  local name="$1"
-  local description="$2"
-  local collection_id="$3"
-  local query="$4"
-  local display="$5"
-  local template_tags="${6:-{}}"
-  local payload
+  local file_json="$1"
+  local collection_id="$2"
+  
+  if ! parsed_json="$(cat "$file_json" | jq -r .)"; then
+    echo "Failed to parse $file_json. Exiting." >&2
+    exit 1
+  fi
+  
+  local name="$(echo "$parsed_json" | jq -r '.name')"
+  local description="$(echo "$parsed_json" | jq -r '.description')"
+  local query="$(echo "$parsed_json" | jq -r '.dataset_query.native.query')"
+  local display="$(echo "$parsed_json" | jq -r '.display')"
+  local template_tags="$(echo "$parsed_json" | jq -c '.dataset_query.native["template-tags"] // {}')"
+  local table_ref="$(echo "$parsed_json" | jq -r '.table_ref // empty')"
+  local table_id=""
+  local visualization_settings="$(echo "$parsed_json" | jq -c '.visualization_settings // {}')"
 
+  if [ -n "${table_ref}" ]; then
+    table_id="$(resolve_table_id "${table_ref}")"
+  fi
+
+  local payload
   payload="$(jq -n \
     --arg name "${name}" \
     --arg description "${description}" \
     --arg query "${query}" \
     --arg display "${display}" \
-    --argjson templateTags "${template_tags}" \
-    --argjson collectionId "${collection_id}" \
-    --argjson databaseId "${APP_DB_ID}" \
+    --arg templateTags "${template_tags}" \
+    --arg visualizationSettings "${visualization_settings}" \
+    --arg collectionId "${collection_id}" \
+    --arg databaseId "${APP_DB_ID}" \
+    --arg tableId "${table_id}" \
     '{
       name: $name,
       description: $description,
-      collection_id: $collectionId,
+      collection_id: ($collectionId | tonumber),
       dataset_query: {
         type: "native",
         native: {
           query: $query,
-          "template-tags": $templateTags
+          "template-tags": ($templateTags | fromjson)
         },
-        database: $databaseId
+        database: ($databaseId | tonumber)
       },
+      table_id: (if ($tableId | length) > 0 then ($tableId | tonumber) else null end),
       display: $display,
-      visualization_settings: {}
+      visualization_settings: ($visualizationSettings | fromjson)
     }')"
 
   api_request POST "/api/card" "${payload}" | jq -r '.id'
 }
 
 create_dashboard() {
-  local name="$1"
-  local description="$2"
-  local collection_id="$3"
-  local dashcards_json="$4"
-  local parameters_json="${5:-[]}"
-  local payload
+  local file_json="$1"
+  local collection_id="$2"
+  
+  if ! parsed_json="$(cat "$file_json" | jq -r .)"; then
+    echo "Failed to parse $file_json. Exiting." >&2
+    exit 1
+  fi
+  
+  local name="$(echo "$parsed_json" | jq -r '.name')"
+  local description="$(echo "$parsed_json" | jq -r '.description')"
+  local parameters_json="$(echo "$parsed_json" | jq -c '.parameters // []')"
+  
+  # First, create cards and build dashcards array
+  local dashcards="[]"
+  local num_cards="$(echo "$parsed_json" | jq '.cards | length')"
+  if [ "$num_cards" -gt 0 ]; then
+    for i in $(seq 0 $((num_cards - 1))); do
+      local card_file="/tmp/card_${i}.json"
+      echo "$parsed_json" | jq -c ".cards[$i]" > "$card_file"
+      local card_id="$(create_card "$card_file" "$collection_id")"
+      
+      local sizeX="$(echo "$parsed_json" | jq -r ".cards[$i].sizeX // 4")"
+      local sizeY="$(echo "$parsed_json" | jq -r ".cards[$i].sizeY // 4")"
+      local row="$(echo "$parsed_json" | jq -r ".cards[$i].row // 0")"
+      local col="$(echo "$parsed_json" | jq -r ".cards[$i].col // 0")"
+      
+      local mappings
+      mappings="$(echo "$parsed_json" | jq -c --argjson cardIndex "$i" '
+        (.parameters // [] | map(
+          if .slug == "clinic_jid_filter" then
+            { parameter_id: .id, target: ["variable", ["template-tag", "clinic_jid"]] }
+          elif .slug == "organization_oid_filter" then
+            { parameter_id: .id, target: ["variable", ["template-tag", "organization_oid"]] }
+          elif .slug == "local_uid_filter" then
+            { parameter_id: .id, target: ["variable", ["template-tag", "local_uid"]] }
+          else
+            empty
+          end
+        )) as $candidateMappings
+        | (.cards[$cardIndex].dataset_query.native["template-tags"] // {} | keys) as $cardTags
+        | [ $candidateMappings[] | select(($cardTags | index(.target[1][1])) != null) ]
+      ')"
+      
+      local dashcard="$(jq -n \
+        --arg cardId "$card_id" \
+        --arg sizeX "$sizeX" \
+        --arg sizeY "$sizeY" \
+        --arg row "$row" \
+        --arg col "$col" \
+        --arg mappings "$mappings" \
+        '{
+          card_id: ($cardId | tonumber),
+          size_x: ($sizeX | tonumber),
+          size_y: ($sizeY | tonumber),
+          row: ($row | tonumber),
+          col: ($col | tonumber),
+          parameter_mappings: ($mappings | fromjson)
+        }')"
+        
+      dashcards="$(echo "$dashcards" | jq --arg dc "$dashcard" '. + [($dc | fromjson)]')"
+    done
+  fi
 
+  local payload
   payload="$(jq -n \
     --arg name "${name}" \
     --arg description "${description}" \
-    --argjson collectionId "${collection_id}" \
-    --argjson dashcards "${dashcards_json}" \
-    --argjson parameters "${parameters_json}" \
+    --arg collectionId "${collection_id}" \
+    --arg dashcards "${dashcards}" \
+    --arg parameters "${parameters_json}" \
     '{
       name: $name,
       description: $description,
-      collection_id: $collectionId,
+      collection_id: ($collectionId | tonumber),
       cacheables: [],
-      dashcards: $dashcards,
-      parameters: $parameters
+      dashcards: ($dashcards | fromjson),
+      parameters: ($parameters | fromjson)
     }')"
 
   api_request POST "/api/dashboard" "${payload}" | jq -r '.id'
@@ -264,69 +377,14 @@ done
 authenticate
 APP_DB_ID="$(ensure_app_database)"
 
-ROOT_COLLECTION_ID="$(create_collection "${ROOT_COLLECTION_NAME}" "Коллекция дашбордов EGISZ: бизнес/продукт и технический мониторинг" "#509EE3")"
-BUSINESS_COLLECTION_ID="$(create_collection "${BUSINESS_COLLECTION_NAME}" "Управленческая и продуктовая аналитика" "#84BB4C" "${ROOT_COLLECTION_ID}")"
-TECH_COLLECTION_ID="$(create_collection "${TECH_COLLECTION_NAME}" "Диагностика и эксплуатационный мониторинг" "#ED6E6E" "${ROOT_COLLECTION_ID}")"
+ROOT_COLLECTION_ID="$(create_collection "${ROOT_COLLECTION_NAME}" "Коллекция дашбордов EGISZ" "#509EE3")"
 
-SERVICE_PENETRATION_ID="$(create_card \
-  "Проникновение сервиса" \
-  "Доля активных клиник за 30 дней от общего зарегистрированного пула" \
-  "${BUSINESS_COLLECTION_ID}" \
-  "WITH total AS (SELECT COUNT(DISTINCT dc.jid)::bigint AS total_registered FROM public.dim_clinics dc WHERE dc.jid IS NOT NULL AND dc.mo_uid <> 'ghost-log-group-9901'), active AS (SELECT COUNT(DISTINCT ua.jid)::bigint AS active_30d FROM public.v_unified_analytics ua WHERE ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days') SELECT total.total_registered AS \"Всего зарегистрированных клиник\", active.active_30d AS \"Активные клиники (30д)\", COALESCE(ROUND(100.0 * active.active_30d / NULLIF(total.total_registered, 0), 2), 0) AS \"Проникновение сервиса, %\" FROM total CROSS JOIN active;" \
-  "table")"
-
-DOC_SUCCESS_ID="$(create_card \
-  "Успешность по типам документов" \
-  "Success/Error по KIND (document_type)" \
-  "${BUSINESS_COLLECTION_ID}" \
-  "SELECT COALESCE(NULLIF(TRIM(ua.document_type), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"KIND\", COUNT(*)::bigint AS \"Всего\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\", COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0), 2), 0) AS \"Успешность, %\", COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE ua.is_error) / NULLIF(COUNT(*), 0), 2), 0) AS \"Ошибки, %\" FROM public.v_unified_analytics ua WHERE ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY COALESCE(NULLIF(TRIM(ua.document_type), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') ORDER BY \"Всего\" DESC;" \
-  "bar")"
-
-TOP_CLINICS_ID="$(create_card \
-  "Динамика по ЮЛ" \
-  "Топ-активные клиники по объему транзакций за 30 дней" \
-  "${BUSINESS_COLLECTION_ID}" \
-  "SELECT ua.clinic_label AS \"Клиника\", COUNT(*)::bigint AS \"Транзакций\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.clinic_jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] GROUP BY ua.clinic_label ORDER BY \"Транзакций\" DESC, ua.clinic_label ASC LIMIT 30;" \
-  "bar" \
-  "{\"clinic_jid\":{\"id\":\"clinic_jid\",\"name\":\"clinic_jid\",\"display-name\":\"JID клиники\",\"type\":\"number\",\"required\":false}}")"
-
-ERROR_MATRIX_ID="$(create_card \
-  "Матрица ошибок" \
-  "Свод ошибок: KIND x категория" \
-  "${TECH_COLLECTION_ID}" \
-  "SELECT COALESCE(NULLIF(TRIM(ua.document_type), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"KIND\", COALESCE(NULLIF(TRIM(ua.error_category), ''), 'Прочие ошибки') AS \"Категория ошибки\", COUNT(*)::bigint AS \"Количество\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY 1 ASC, 3 DESC;" \
-  "table")"
-
-AVAIL_HEATMAP_ID="$(create_card \
-  "Heatmap доступности" \
-  "Плотность ошибок по JID в почасовом разрезе" \
-  "${TECH_COLLECTION_ID}" \
-  "SELECT date_trunc('hour', ua.transaction_date) AS \"Час\", ua.clinic_label AS \"Клиника\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.clinic_jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '7 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] GROUP BY 1, 2 ORDER BY 1 ASC, 2 ASC;" \
-  "heatmap" \
-  "{\"clinic_jid\":{\"id\":\"clinic_jid\",\"name\":\"clinic_jid\",\"display-name\":\"JID клиники\",\"type\":\"number\",\"required\":false}}")"
-
-TOP_CRITICAL_ID="$(create_card \
-  "Топ-20 ошибок ЕГИЗС" \
-  "Структурированные ошибки по полям error_code и error_message." \
-  "${TECH_COLLECTION_ID}" \
-  "SELECT ua.clinic_label AS \"clinic_label\", COALESCE(NULLIF(TRIM(ua.error_code), ''), '[no_code]') AS \"error_code\", COALESCE(NULLIF(TRIM(ua.error_message), ''), '[no_message]') AS \"error_message\", COUNT(*)::bigint AS \"count\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] GROUP BY ua.clinic_label, COALESCE(NULLIF(TRIM(ua.error_code), ''), '[no_code]'), COALESCE(NULLIF(TRIM(ua.error_message), ''), '[no_message]') ORDER BY \"count\" DESC, \"clinic_label\" ASC LIMIT 20;" \
-  "table" \
-  "{\"clinic_jid\":{\"id\":\"clinic_jid\",\"name\":\"clinic_jid\",\"display-name\":\"JID клиники\",\"type\":\"number\",\"required\":false}}")"
-
-BUSINESS_DASHBOARD_ID="$(create_dashboard \
-  "${BUSINESS_DASHBOARD_NAME}" \
-  "Управленческий и продуктовый контур мониторинга" \
-  "${BUSINESS_COLLECTION_ID}" \
-  "[{\"card_id\": ${SERVICE_PENETRATION_ID}, \"sizeX\": 8, \"sizeY\": 3, \"row\": 0, \"col\": 0}, {\"card_id\": ${DOC_SUCCESS_ID}, \"sizeX\": 16, \"sizeY\": 3, \"row\": 0, \"col\": 8}, {\"card_id\": ${TOP_CLINICS_ID}, \"sizeX\": 24, \"sizeY\": 5, \"row\": 3, \"col\": 0, \"parameter_mappings\":[{\"parameter_id\":\"clinic_jid_filter\",\"target\":[\"variable\",[\"template-tag\",\"clinic_jid\"]]}]}]" \
-  "[{\"id\":\"clinic_jid_filter\",\"name\":\"JID клиники\",\"slug\":\"clinic_jid_filter\",\"type\":\"number\"}]")"
-
-TECH_DASHBOARD_ID="$(create_dashboard \
-  "${TECH_DASHBOARD_NAME}" \
-  "Технический контур мониторинга и диагностики" \
-  "${TECH_COLLECTION_ID}" \
-  "[{\"card_id\": ${ERROR_MATRIX_ID}, \"sizeX\": 12, \"sizeY\": 4, \"row\": 0, \"col\": 0}, {\"card_id\": ${AVAIL_HEATMAP_ID}, \"sizeX\": 12, \"sizeY\": 4, \"row\": 0, \"col\": 12, \"parameter_mappings\":[{\"parameter_id\":\"clinic_jid_filter\",\"target\":[\"variable\",[\"template-tag\",\"clinic_jid\"]]}]}, {\"card_id\": ${TOP_CRITICAL_ID}, \"sizeX\": 24, \"sizeY\": 5, \"row\": 4, \"col\": 0, \"parameter_mappings\":[{\"parameter_id\":\"clinic_jid_filter\",\"target\":[\"variable\",[\"template-tag\",\"clinic_jid\"]]}]}]" \
-  "[{\"id\":\"clinic_jid_filter\",\"name\":\"JID клиники\",\"slug\":\"clinic_jid_filter\",\"type\":\"number\"}]")"
+for dashboard_file in /app/metabase_dashboards/*.json; do
+  if [ -f "$dashboard_file" ]; then
+    log_info "Provisioning $dashboard_file..."
+    create_dashboard "$dashboard_file" "$ROOT_COLLECTION_ID"
+  fi
+done
 
 log_info "Database: ${APP_DB_ID}"
 log_info "Root collection: ${ROOT_COLLECTION_ID}"
-log_info "Dashboards: ${BUSINESS_DASHBOARD_ID}, ${TECH_DASHBOARD_ID}"

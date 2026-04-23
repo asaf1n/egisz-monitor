@@ -142,6 +142,23 @@ export class FirebirdService {
     return Array.isArray(result) ? result : [];
   }
 
+  async fetchEnrichmentDictionary(): Promise<FirebirdLicenseLogRow[]> {
+    const config = await this.getResolvedConfig();
+    const query = `
+      SELECT
+        l.MO_DOMEN AS MO_DOMEN,
+        l.JID AS JID,
+        l.MO_UID AS MO_UID,
+        l.KIND AS KIND,
+        l.SERVICE_TYPE AS SERVICE_TYPE,
+        jp.JNAME AS JNAME
+      FROM EGISZ_LICENSES l
+      LEFT JOIN JPERSONS jp ON jp.JID = l.JID
+    `;
+    const result = await this.executeQuery(config, query, FIREBIRD_ETL_QUERY_TIMEOUT_MS);
+    return Array.isArray(result) ? result : [];
+  }
+
   async fetchExchangeLogCount(): Promise<number> {
     const config = await this.getResolvedConfig();
     const countQuery = this.buildCountQuery(config.joinQuery);

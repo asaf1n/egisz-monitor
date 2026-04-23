@@ -6,6 +6,7 @@
     {
       "name": "Динамика подключений",
       "description": "Сколько уникальных JID отправили хотя бы один успешный документ по неделям за 90 дней.",
+      "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
@@ -15,8 +16,22 @@
       },
       "display": "line",
       "visualization_settings": {
-        "graph.dimensions": ["Неделя"],
-        "graph.metrics": ["Уникальных JID"]
+        "graph.dimensions": [
+          "Неделя"
+        ],
+        "graph.metrics": [
+          "Уникальных JID"
+        ],
+        "column_settings": {
+          "[\"name\",\"clinic_id\"]": { "display_as": null },
+          "[\"name\",\"clinic_jid\"]": { "display_as": null },
+          "[\"name\",\"jid\"]": { "display_as": null },
+          "[\"name\",\"mo_uid\"]": { "display_as": null },
+          "[\"name\",\"original_LOGID\"]": { "display_as": null },
+          "[\"name\",\"original_log_id\"]": { "display_as": null },
+          "[\"name\",\"service_id\"]": { "display_as": null },
+          "[\"name\",\"transaction_id\"]": { "display_as": null }
+        }
       },
       "sizeX": 12,
       "sizeY": 4,
@@ -26,17 +41,32 @@
     {
       "name": "Рейтинг типов СЭМД",
       "description": "Какие коды KIND наиболее востребованы по объему трафика за 30 дней.",
+      "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_type), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"KIND\", COUNT(*)::bigint AS \"Трафик\" FROM public.v_unified_analytics ua WHERE ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY \"Трафик\" DESC LIMIT 20;"
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_kind), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"KIND\", COUNT(*)::bigint AS \"Трафик\" FROM public.v_unified_analytics ua WHERE ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY \"Трафик\" DESC LIMIT 20;"
         },
         "database": 1
       },
       "display": "bar",
       "visualization_settings": {
-        "graph.dimensions": ["KIND"],
-        "graph.metrics": ["Трафик"]
+        "graph.dimensions": [
+          "KIND"
+        ],
+        "graph.metrics": [
+          "Трафик"
+        ],
+        "column_settings": {
+          "[\"name\",\"clinic_id\"]": { "display_as": null },
+          "[\"name\",\"clinic_jid\"]": { "display_as": null },
+          "[\"name\",\"jid\"]": { "display_as": null },
+          "[\"name\",\"mo_uid\"]": { "display_as": null },
+          "[\"name\",\"original_LOGID\"]": { "display_as": null },
+          "[\"name\",\"original_log_id\"]": { "display_as": null },
+          "[\"name\",\"service_id\"]": { "display_as": null },
+          "[\"name\",\"transaction_id\"]": { "display_as": null }
+        }
       },
       "sizeX": 12,
       "sizeY": 4,
@@ -46,6 +76,7 @@
     {
       "name": "Доля автоматических отказов",
       "description": "Процент ошибок категорий «Ошибка связи» и «Ошибка валидации XSD» от общего объема.",
+      "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
@@ -54,7 +85,18 @@
         "database": 1
       },
       "display": "table",
-      "visualization_settings": {},
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"clinic_id\"]": { "display_as": null },
+          "[\"name\",\"clinic_jid\"]": { "display_as": null },
+          "[\"name\",\"jid\"]": { "display_as": null },
+          "[\"name\",\"mo_uid\"]": { "display_as": null },
+          "[\"name\",\"original_LOGID\"]": { "display_as": null },
+          "[\"name\",\"original_log_id\"]": { "display_as": null },
+          "[\"name\",\"service_id\"]": { "display_as": null },
+          "[\"name\",\"transaction_id\"]": { "display_as": null }
+        }
+      },
       "sizeX": 24,
       "sizeY": 3,
       "row": 4,

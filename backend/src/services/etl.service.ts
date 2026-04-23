@@ -7,7 +7,7 @@ const CATEGORY_INFRASTRUCTURE = "Infrastructure";
 const CATEGORY_FRMR_ERROR = "FRMR_Error";
 const CATEGORY_VALIDATION_ERROR = "Validation_Error";
 const CATEGORY_SUCCESS = "Success";
-const HOSTNAME_TAG_CANDIDATES = ["replyto", "hostname", "host", "address", "url", "endpoint"] as const;
+const HOSTNAME_TAG_CANDIDATES = ["replyto", "to", "hostname", "host", "address", "url", "endpoint"] as const;
 const EXCLUDED_HOSTNAME_FRAGMENTS = [
   "egisz",
   "proxy",
@@ -25,7 +25,9 @@ type ParsedMessageMetadata = {
   parsedStatus: "success" | "error" | null;
   errorCode: string | null;
   errorMessage: string | null;
-  fallbackJid: number | null;
+  organizationOid: string | null;
+  localUid: string | null;
+  replyTo: string | null;
   fallbackKind: string | null;
   hasRawNetworkError: boolean;
   hostname: string | null;
@@ -36,7 +38,9 @@ const EMPTY_PARSED_MESSAGE_METADATA: ParsedMessageMetadata = {
   parsedStatus: null,
   errorCode: null,
   errorMessage: null,
-  fallbackJid: null,
+  organizationOid: null,
+  localUid: null,
+  replyTo: null,
   fallbackKind: null,
   hasRawNetworkError: false,
   hostname: null,
@@ -385,38 +389,39 @@ export class EtlService {
     const uri = this.normalizeText(this.toOptionalString(row.URI));
     const method = this.normalizeText(this.toOptionalString(row.METHOD));
     const action = this.normalizeText(this.toOptionalString(row.ACTION));
-    const explicitDomain = this.normalizeClinicHostname(this.normalizeText(this.toOptionalString(row.MO_DOMEN)));
+    
     const parsedMessage = this.parseMessageMetadata(messageText);
+    const replyToValue =
+      this.normalizeText(this.toOptionalString(row.REPLYTO)) ??
+      parsedMessage.replyTo;
+    const replyToDomain = this.normalizeClinicHostname(this.normalizeHostname(replyToValue));
+    const localUid =
+      this.normalizeCodeValue(row.DOCUMENTID) ??
+      this.normalizeCodeValue(parsedMessage.localUid);
+    const explicitMoUid = this.normalizeText(this.toOptionalString(row.MO_UID));
+    const organizationOid = this.normalizeText(parsedMessage.organizationOid);
+    const moUid =
+      explicitMoUid ??
+      organizationOid ??
+      `unresolved-oid-${originalLogId}`;
+    const sourceJid = this.toOptionalNumber(row.JID);
+    const jid = sourceJid ?? 0;
+    const isUnresolvedClinic = sourceJid === null;
+    const unresolvedClinicMarker =
+      this.normalizeCodeValue(this.toOptionalNumber(row.PARENTLOGID) ?? this.toOptionalNumber(row.GRPID)) ??
+      this.normalizeCodeValue(originalLogId) ??
+      "unknown";
+    const jname =
+      isUnresolvedClinic
+        ? `Не сопоставлено (нет JID) [${unresolvedClinicMarker}]`
+        : this.normalizeText(this.toOptionalString(row.JNAME));
     const hostnameCandidates = this.collectHostnameCandidates(
-      this.normalizeText(this.toOptionalString(row.REPLYTO)),
+      replyToValue,
       parsedMessage.hostname,
       logText,
       messageText
     );
     const hostname = this.findTargetClinicHostname(hostnameCandidates);
-    const clinicDomain = explicitDomain ?? hostname;
-    const parentLogId = this.toOptionalNumber(row.PARENTLOGID) ?? this.toOptionalNumber(row.GRPID);
-    const resolvedJid = this.toOptionalNumber(row.JID) ?? parsedMessage.fallbackJid;
-    const unresolvedClinicMarker =
-      this.normalizeCodeValue(row.DOCUMENTID) ??
-      this.normalizeCodeValue(parentLogId) ??
-      this.normalizeCodeValue(originalLogId) ??
-      "unknown";
-    const isUnresolvedClinic = resolvedJid === null;
-    const jid = resolvedJid ?? 0;
-    const moUid =
-      isUnresolvedClinic
-        ? `unresolved-jid-${unresolvedClinicMarker}`
-        : (
-            // MO_UID must come from EGISZ_LICENSES.MO_UID first.
-            this.normalizeText(this.toOptionalString(row.MO_UID)) ??
-            clinicDomain ??
-            `log-group-${parentLogId ?? originalLogId}`
-          );
-    const jname =
-      isUnresolvedClinic
-        ? `Не сопоставлено (нет JID) [${unresolvedClinicMarker}]`
-        : this.normalizeText(this.toOptionalString(row.JNAME));
     const serviceDescription = this.buildServiceDescription(uri, method, action, row);
     const kindCode = this.normalizeCodeValue(row.KIND) ?? parsedMessage.fallbackKind;
     const kindLabel = kindCode ?? "UNKNOWN";
@@ -457,9 +462,9 @@ export class EtlService {
       clinic: {
         jid,
         moUid,
-        moDomen: clinicDomain,
+        moDomen: replyToDomain,
         jname,
-        isVerified: !isUnresolvedClinic && Boolean(explicitDomain || jname)
+        isVerified: !isUnresolvedClinic
       },
       service: {
         kind,
@@ -473,7 +478,9 @@ export class EtlService {
         errorCategory,
         errorCode,
         errorMessage,
-        errorText
+        errorText,
+        localUid,
+        replyTo: replyToValue
       },
       error: status === "error" && errorCategory && errorText
         ? this.buildErrorRecord({
@@ -519,8 +526,9 @@ export class EtlService {
   private parseXmlMessageMetadata(xmlText: string): ParsedMessageMetadata {
     const errorCode = this.extractFirstXmlTagValue(xmlText, "code");
     const errorMessage = this.extractFirstXmlTagValue(xmlText, "message");
-    const organization = this.extractFirstXmlTagValue(xmlText, "organization");
-    const fallbackJid = this.toOptionalNumber(organization);
+    const organizationOid = this.extractFirstXmlTagValue(xmlText, "organization");
+    const localUid = this.extractFirstXmlTagValue(xmlText, "localUid");
+    const replyTo = this.extractFirstXmlTagValue(xmlText, "To");
     const fallbackKind = this.normalizeCodeValue(this.extractFirstXmlTagValue(xmlText, "kind"));
     const explicitStatus = this.extractFirstXmlTagValue(xmlText, "status")?.toLowerCase();
     const status =
@@ -542,7 +550,9 @@ export class EtlService {
       parsedStatus: status,
       errorCode: this.normalizeCodeValue(errorCode),
       errorMessage: this.normalizeText(errorMessage),
-      fallbackJid,
+      organizationOid: this.normalizeText(organizationOid),
+      localUid: this.normalizeCodeValue(localUid),
+      replyTo: this.normalizeText(replyTo),
       fallbackKind,
       hasRawNetworkError: false,
       hostname

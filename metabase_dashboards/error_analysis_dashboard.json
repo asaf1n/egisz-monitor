@@ -1,104 +1,324 @@
 {
-    "name":  "Технический анализ",
-    "description":  "Технический мониторинг EGISZ: матрица ошибок, heatmap доступности и топ структурированных инцидентов.",
-    "collection_id":  null,
-    "cards":  [
-                  {
-                      "name":  "Матрица ошибок",
-                      "description":  "Pivot-матрица KIND x error_category за 30 дней.",
-                      "dataset_query":  {
-                                            "type":  "native",
-                                            "native":  {
-                                                           "query":  "SELECT COALESCE(NULLIF(TRIM(ua.document_type), \u0027\u0027), NULLIF(TRIM(ua.service_kind), \u0027\u0027), \u0027Не указан\u0027) AS \"KIND\", COALESCE(NULLIF(TRIM(ua.error_category), \u0027\u0027), \u0027Прочие ошибки\u0027) AS \"Категория ошибки\", COUNT(*)::bigint AS \"Количество\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date \u003e= NOW() - INTERVAL \u002730 days\u0027 GROUP BY 1, 2 ORDER BY 1 ASC, 3 DESC;"
-                                                       },
-                                            "database":  1
-                                        },
-                      "display":  "table",
-                      "visualization_settings":  {
-                                                     "table.pivot_column":  "Категория ошибки",
-                                                     "table.cell_column":  "Количество"
-                                                 },
-                      "sizeX":  12,
-                      "sizeY":  4,
-                      "row":  0,
-                      "col":  0
-                  },
-                  {
-                      "name":  "Heatmap доступности",
-                      "description":  "Почасовая плотность ошибок по клиникам за 7 дней.",
-                      "dataset_query":  {
-                                            "type":  "native",
-                                            "native":  {
-                                                           "query":  "SELECT date_trunc(\u0027hour\u0027, ua.transaction_date) AS \"Час\", ua.clinic_label AS \"Клиника\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.clinic_jid IS NOT NULL AND ua.transaction_date \u003e= NOW() - INTERVAL \u00277 days\u0027 [[ AND ua.clinic_jid = {{clinic_jid}} ]] GROUP BY 1, 2 ORDER BY 1 ASC, 2 ASC;",
-                                                           "template-tags":  {
-                                                                                 "clinic_jid":  {
-                                                                                                    "id":  "clinic_jid",
-                                                                                                    "name":  "clinic_jid",
-                                                                                                    "display-name":  "JID клиники",
-                                                                                                    "type":  "number",
-                                                                                                    "required":  false
-                                                                                                }
-                                                                             }
-                                                       },
-                                            "database":  1
-                                        },
-                      "display":  "heatmap",
-                      "visualization_settings":  {
-                                                     "graph.dimensions":  [
-                                                                              "Час",
-                                                                              "Клиника"
-                                                                          ],
-                                                     "graph.metrics":  [
-                                                                           "Ошибки"
-                                                                       ]
-                                                 },
-                      "sizeX":  12,
-                      "sizeY":  4,
-                      "row":  0,
-                      "col":  12
-                  },
-                  {
-                      "name":  "Топ-20 ошибок ЕГИЗС",
-                      "description":  "Таблица ошибок по структурированным полям error_code и error_message.",
-                      "dataset_query":  {
-                                            "type":  "native",
-                                            "native":  {
-                                                           "query":  "SELECT ua.clinic_label AS \"clinic_label\", COALESCE(NULLIF(TRIM(ua.error_code), \u0027\u0027), \u0027[no_code]\u0027) AS \"error_code\", COALESCE(NULLIF(TRIM(ua.error_message), \u0027\u0027), \u0027[no_message]\u0027) AS \"error_message\", COUNT(*)::bigint AS \"count\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date \u003e= NOW() - INTERVAL \u002730 days\u0027 [[ AND ua.clinic_jid = {{clinic_jid}} ]] GROUP BY ua.clinic_label, COALESCE(NULLIF(TRIM(ua.error_code), \u0027\u0027), \u0027[no_code]\u0027), COALESCE(NULLIF(TRIM(ua.error_message), \u0027\u0027), \u0027[no_message]\u0027) ORDER BY \"count\" DESC, \"clinic_label\" ASC LIMIT 20;",
-                                                           "template-tags":  {
-                                                                                 "clinic_jid":  {
-                                                                                                    "id":  "clinic_jid",
-                                                                                                    "name":  "clinic_jid",
-                                                                                                    "display-name":  "JID клиники",
-                                                                                                    "type":  "number",
-                                                                                                    "required":  false
-                                                                                                }
-                                                                             }
-                                                       },
-                                            "database":  1
-                                        },
-                      "display":  "table",
-                      "visualization_settings":  {
-                                                     "column_settings":  {
-                                                                             "[\"name\",\"clinic_id\"]":  {
-                                                                                                              "display_as":  null
-                                                                                                          },
-                                                                             "[\"name\",\"clinic_jid\"]":  {
-                                                                                                               "display_as":  null
-                                                                                                           }
-                                                                         }
-                                                 },
-                      "sizeX":  24,
-                      "sizeY":  5,
-                      "row":  4,
-                      "col":  0
-                  }
-              ],
-    "parameters":  [
-                       {
-                           "id":  "clinic_jid_filter",
-                           "name":  "JID клиники",
-                           "slug":  "clinic_jid_filter",
-                           "type":  "number"
-                       }
-                   ]
+  "name": "Технический анализ",
+  "description": "Технический мониторинг EGISZ: матрица ошибок, heatmap доступности и топ структурированных инцидентов.",
+  "collection_id": null,
+  "cards": [
+    {
+      "name": "Матрица ошибок",
+      "description": "Pivot-матрица KIND x error_category за 30 дней.",
+      "table_ref": "v_unified_analytics",
+      "dataset_query": {
+        "type": "native",
+        "native": {
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_kind), ''), NULLIF(TRIM(ua.service_kind), ''), 'N/A') AS \"KIND\", COALESCE(NULLIF(TRIM(ua.error_category), ''), 'Other errors') AS \"Error Category\", COUNT(*)::bigint AS \"Count\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1, 2 ORDER BY 1 ASC, 3 DESC;",
+          "template-tags": {
+            "clinic_jid": {
+              "id": "clinic_jid",
+              "name": "clinic_jid",
+              "display-name": "Client ID (JID)",
+              "type": "number",
+              "required": false
+            },
+            "organization_oid": {
+              "id": "organization_oid",
+              "name": "organization_oid",
+              "display-name": "Organization OID (Federal)",
+              "type": "text",
+              "required": false
+            },
+            "local_uid": {
+              "id": "local_uid",
+              "name": "local_uid",
+              "display-name": "LocalUID",
+              "type": "text",
+              "required": false
+            }
+          }
+        },
+        "database": 1
+      },
+      "display": "table",
+      "visualization_settings": {
+        "table.pivot_column": "Категория ошибки",
+        "table.cell_column": "Количество",
+        "column_settings": {
+          "[\"name\",\"clinic_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"clinic_jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"mo_uid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_LOGID\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_log_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"service_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"transaction_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"local_uid\"]": {
+            "type": "text",
+            "display_as": null
+          }
+        }
+      },
+      "sizeX": 12,
+      "sizeY": 4,
+      "row": 0,
+      "col": 0
+    },
+    {
+      "name": "Heatmap доступности",
+      "description": "Почасовая плотность ошибок по клиникам за 7 дней.",
+      "table_ref": "v_unified_analytics",
+      "dataset_query": {
+        "type": "native",
+        "native": {
+          "query": "SELECT date_trunc('hour', ua.transaction_date) AS \"Hour\", ua.clinic_label AS \"Clinic\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Errors\" FROM public.v_unified_analytics ua WHERE ua.clinic_jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '7 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1, 2 ORDER BY 1 ASC, 2 ASC;",
+          "template-tags": {
+            "clinic_jid": {
+              "id": "clinic_jid",
+              "name": "clinic_jid",
+              "display-name": "Client ID (JID)",
+              "type": "number",
+              "required": false
+            },
+            "organization_oid": {
+              "id": "organization_oid",
+              "name": "organization_oid",
+              "display-name": "Organization OID (Federal)",
+              "type": "text",
+              "required": false
+            },
+            "local_uid": {
+              "id": "local_uid",
+              "name": "local_uid",
+              "display-name": "LocalUID",
+              "type": "text",
+              "required": false
+            }
+          }
+        },
+        "database": 1
+      },
+      "display": "heatmap",
+      "visualization_settings": {
+        "graph.dimensions": [
+          "Час",
+          "Клиника"
+        ],
+        "graph.metrics": [
+          "Ошибки"
+        ],
+        "column_settings": {
+          "[\"name\",\"clinic_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"clinic_jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"mo_uid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_LOGID\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_log_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"service_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"transaction_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"local_uid\"]": {
+            "type": "text",
+            "display_as": null
+          }
+        }
+      },
+      "sizeX": 12,
+      "sizeY": 4,
+      "row": 0,
+      "col": 12
+    },
+    {
+      "name": "Топ-20 ошибок ЕГИЗС",
+      "description": "Таблица ошибок по структурированным полям error_code и error_message.",
+      "table_ref": "v_unified_analytics",
+      "dataset_query": {
+        "type": "native",
+        "native": {
+          "query": "SELECT ua.clinic_label AS \"clinic_label\", COALESCE(NULLIF(TRIM(ua.error_code), ''), '[no_code]') AS \"error_code\", COALESCE(NULLIF(TRIM(ua.error_message), ''), '[no_message]') AS \"error_message\", COUNT(*)::bigint AS \"count\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY ua.clinic_label, COALESCE(NULLIF(TRIM(ua.error_code), ''), '[no_code]'), COALESCE(NULLIF(TRIM(ua.error_message), ''), '[no_message]') ORDER BY \"count\" DESC, \"clinic_label\" ASC LIMIT 20;",
+          "template-tags": {
+            "clinic_jid": {
+              "id": "clinic_jid",
+              "name": "clinic_jid",
+              "display-name": "Client ID (JID)",
+              "type": "number",
+              "required": false
+            },
+            "organization_oid": {
+              "id": "organization_oid",
+              "name": "organization_oid",
+              "display-name": "Organization OID (Federal)",
+              "type": "text",
+              "required": false
+            },
+            "local_uid": {
+              "id": "local_uid",
+              "name": "local_uid",
+              "display-name": "LocalUID",
+              "type": "text",
+              "required": false
+            }
+          }
+        },
+        "database": 1
+      },
+      "display": "table",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"clinic_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"clinic_jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"mo_uid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_LOGID\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_log_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"service_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"transaction_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"local_uid\"]": {
+            "type": "text",
+            "display_as": null
+          }
+        }
+      },
+      "sizeX": 24,
+      "sizeY": 5,
+      "row": 4,
+      "col": 0
+    },
+    {
+      "name": "Clinic Accessibility by reply_to",
+      "description": "Network incidents grouped by external clinic address.",
+      "table_ref": "v_unified_analytics",
+      "dataset_query": {
+        "type": "native",
+        "native": {
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.reply_to), ''), '[no_reply_to]') AS \"reply_to\", COUNT(*)::bigint AS \"Incidents\", COUNT(DISTINCT ua.clinic_jid)::bigint AS \"Clinics\", MAX(ua.transaction_date) AS \"Last incident\" FROM public.v_unified_analytics ua WHERE ua.is_error AND (ua.error_category = 'Infrastructure' OR ua.error_subcategory IN ('timeout', 'connection_refused', 'proxy')) AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1 ORDER BY \"Incidents\" DESC, \"reply_to\" ASC LIMIT 50;",
+          "template-tags": {
+            "clinic_jid": {
+              "id": "clinic_jid",
+              "name": "clinic_jid",
+              "display-name": "Client ID (JID)",
+              "type": "number",
+              "required": false
+            },
+            "organization_oid": {
+              "id": "organization_oid",
+              "name": "organization_oid",
+              "display-name": "Organization OID (Federal)",
+              "type": "text",
+              "required": false
+            },
+            "local_uid": {
+              "id": "local_uid",
+              "name": "local_uid",
+              "display-name": "LocalUID",
+              "type": "text",
+              "required": false
+            }
+          }
+        },
+        "database": 1
+      },
+      "display": "table",
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"clinic_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"clinic_jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"jid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"mo_uid\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"local_uid\"]": {
+            "type": "text",
+            "display_as": null
+          },
+          "[\"name\",\"original_LOGID\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"original_log_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"service_id\"]": {
+            "display_as": null
+          },
+          "[\"name\",\"transaction_id\"]": {
+            "display_as": null
+          }
+        }
+      },
+      "sizeX": 24,
+      "sizeY": 4,
+      "row": 9,
+      "col": 0
+    }
+  ],
+  "parameters": [
+    {
+      "id": "clinic_jid_filter",
+      "name": "Client ID (JID)",
+      "slug": "clinic_jid_filter",
+      "type": "number"
+    },
+    {
+      "id": "organization_oid_filter",
+      "name": "Organization OID (Federal)",
+      "slug": "organization_oid_filter",
+      "type": "text"
+    },
+    {
+      "id": "local_uid_filter",
+      "name": "LocalUID",
+      "slug": "local_uid_filter",
+      "type": "text"
+    }
+  ]
 }
