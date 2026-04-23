@@ -163,7 +163,7 @@
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT ua.clinic_label AS \"Клиника\", COALESCE(NULLIF(TRIM(ua.error_code), ''), '[без кода]') AS \"Код ошибки\", COALESCE(NULLIF(TRIM(ua.error_message), ''), '[без сообщения]') AS \"Сообщение ошибки\", COUNT(*)::bigint AS \"Количество\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY ua.clinic_label, COALESCE(NULLIF(TRIM(ua.error_code), ''), '[без кода]'), COALESCE(NULLIF(TRIM(ua.error_message), ''), '[без сообщения]') ORDER BY \"Количество\" DESC, \"Клиника\" ASC LIMIT 20;",
+          "query": "SELECT ua.clinic_label AS \"Клиника\", COALESCE(NULLIF(TRIM(ua.error_category), ''), '[без категории]') AS \"Категория ошибки\", COALESCE(NULLIF(TRIM(ua.clean_error_text), ''), '[без сообщения]') AS \"Сообщение ошибки\", COUNT(*)::bigint AS \"Количество\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY ua.clinic_label, COALESCE(NULLIF(TRIM(ua.error_category), ''), '[без категории]'), COALESCE(NULLIF(TRIM(ua.clean_error_text), ''), '[без сообщения]') ORDER BY \"Количество\" DESC, \"Клиника\" ASC LIMIT 20;",
           "template-tags": {
             "clinic_jid": {
               "id": "clinic_jid",
