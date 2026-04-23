@@ -122,7 +122,19 @@ if [ -z "${SESSION_TOKEN}" ] || [ "${SESSION_TOKEN}" = "null" ]; then
 fi
 
 DASHBOARD_ID="$(curl -s "${MB_URL}/api/dashboard" \
-  -H "X-Metabase-Session: ${SESSION_TOKEN}" | jq -r '[.[] | select(.name == "🟢 Главный мониторинг")] | sort_by(.id) | last | .id // empty')"
+  -H "X-Metabase-Session: ${SESSION_TOKEN}" | jq -r '
+    [
+      .[]
+      | select(
+          .name == "Оперативный мониторинг"
+          or .name == "Дашборд сервиса интеграции"
+          or .name == "Статистика отправки"
+        )
+    ]
+    | sort_by(.id)
+    | last
+    | .id // empty
+  ')"
 
 if [ -n "${DASHBOARD_ID}" ]; then
   PUBLIC_UUID="$(curl -s "${MB_URL}/api/dashboard/${DASHBOARD_ID}" \
@@ -140,6 +152,10 @@ if [ -n "${DASHBOARD_ID}" ]; then
     printf '%s' "${PUBLIC_UUID}" > "${PUBLIC_UUID_FILE}"
     log_info "Published dashboard UUID: ${PUBLIC_UUID}"
   fi
+else
+  rm -f "${PUBLIC_UUID_FILE}"
+  log_info "No primary dashboard found for publishing; stale public UUID removed."
 fi
 
 log_info "Metabase provisioning finished successfully"
+

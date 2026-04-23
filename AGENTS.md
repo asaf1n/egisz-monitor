@@ -209,3 +209,33 @@ ormalizeJoinQuery() now auto-falls back to default query when legacy non-existen
 - Error analytics semantics aligned with runtime `v_unified_analytics`: network-focused cards now filter by `Ошибка связи` and technical subcategories (`timeout`, `connection_refused`, `proxy`) instead of legacy `Infrastructure`.
 - Provisioning hardening: `metabase-init/setup-dashboards.sh` filter mapping logic was fixed so all dashboard JSON files can be imported in one pass without jq parameter-mapping failure.
 - Full reset executed: Docker stack was brought down with volumes removed, PostgreSQL was recreated from scratch, Metabase metadata was rebuilt, and application warehouse tables restarted empty for a clean next synchronization.
+
+## v1.8.4 (2026-04-23)
+
+- Clinic label logic enforced: `jname` string generation stripped of fallback values like `Неизвестная клиника (unresolved-oid-...)` or `Не сопоставлено (нет JID) [...]` in ETL extraction and Postgres upsert operations.
+- Historical data cleanup: added migration step in `migrateClinicDirectory` to explicitly `NULL` out existing fallback `jname` strings.
+- Analytics representation alignment: `v_unified_analytics` uses strictly `COALESCE(NULLIF(TRIM(dc.jname), ''), 'Клиника JID: ' || dc.jid::text)` logic, where `mo_uid`, `reply_to`, and `local_uid` are exclusively used as filters or network accessibility metrics (reply_to), not fallback clinic names.
+- SQL View Sync: successfully synced and validated `002_analytics_views.sql` with `v_unified_analytics` updates.
+
+## v1.9 (2026-04-23)
+
+- MO_UID sourced from EGISZ_LICENSES. SEMD fallback to LICENSE_KIND enabled. New clinic naming hierarchy implemented with OID-status fallback. Technical IDs masked with 'Not found' literals. Terminology 'JID' preserved.
+
+## v1.9.1 (2026-04-23)
+
+- Metabase collection was fully rebuilt from scratch into `EGISZ Monitoring`; old EGISZ dashboards/cards are removed before provisioning to prevent dead links and stale report pages.
+- Provisioning upgraded: dashboard filter mapping is now generic (`*_filter -> template tag`), so newly added filters (date range, service channel, LocalUID, JID, OID) bind automatically across cards.
+- Public dashboard publishing fixed: primary public UUID now resolves by current dashboard names (`Оперативный мониторинг`, fallback to legacy names), and stale UUID file is cleared when no dashboard is found.
+- Dashboard pack restructured into 3 working dashboards with separate reports/charts:
+  - `Оперативный мониторинг`: status pie + latest SEMD journal (`MODIFYDATE`, `KIND`, SEMD name, clinic name by JID cache) + top error messages.
+  - `Использование СЭМД`: SEMD type distribution, trend chart, and clinic/type summary with date-clinic-service filters.
+  - `Техническая поддержка`: network incidents by `reply_to/service`, hourly error heatmap, and latest error journal for support triage.
+- Runtime validation completed against live Metabase API after reprovisioning (`ROOT collection id=10`, dashboards ids: 19, 20, 21).
+
+## v1.9.2 (2026-04-23)
+
+- Metabase SQL cards aligned with requested naming: `KIND` columns renamed to `Тип СЭМД`, and `СЭМД` columns renamed to `Наименование СЭМД` in service/error journals.
+- Service analytics filters expanded: added `semd_type` filter for type-specific dynamics and summary charts, plus fixed date presets via `fixed_period` (`7d` / `30d`) alongside `date_from`/`date_to`.
+- Error analytics updated: `Журнал ошибок` renamed from “последних”, date-window filters added to all date-driven cards, and a dedicated `Топ ошибок из ns2:message` card now groups by error type/code/normalized text with explicit `JID`.
+- ETL kind fallback hardened: `row.LICENSE_KIND` now participates in primary `kindCode` resolution before `UNKNOWN`, reducing unknown SEMD type outcomes when dictionary mapping is absent.
+- Clinic label OID guardrail: unresolved/non-FRMO-like synthetic `mo_uid` values are no longer rendered as real OID in `v_unified_analytics`; fallback output is `[OID не найден]`.

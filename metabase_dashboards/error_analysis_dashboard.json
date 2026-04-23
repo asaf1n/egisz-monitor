@@ -1,324 +1,327 @@
 {
-  "name": "Анализ ошибок",
-  "description": "Технический и поддерживающий контур: ошибки по типам документов, Heatmap доступности и повторяющиеся инциденты.",
-  "collection_id": null,
-  "cards": [
-    {
-      "name": "Матрица: тип документа vs ошибка",
-      "description": "Сводная матрица по типам документов и категориям ошибок за 30 дней.",
-      "table_ref": "v_unified_analytics",
-      "dataset_query": {
-        "type": "native",
-        "native": {
-          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_kind), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"Тип документа\", COALESCE(NULLIF(TRIM(ua.error_category), ''), 'Прочие ошибки') AS \"Ошибка\", COUNT(*)::bigint AS \"Количество\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1, 2 ORDER BY 1 ASC, 3 DESC;",
-          "template-tags": {
-            "clinic_jid": {
-              "id": "clinic_jid",
-              "name": "clinic_jid",
-              "display-name": "Client ID (JID)",
-              "type": "number",
-              "required": false
-            },
-            "organization_oid": {
-              "id": "organization_oid",
-              "name": "organization_oid",
-              "display-name": "Organization OID (Federal)",
-              "type": "text",
-              "required": false
-            },
-            "local_uid": {
-              "id": "local_uid",
-              "name": "local_uid",
-              "display-name": "LocalUID",
-              "type": "text",
-              "required": false
-            }
-          }
-        },
-        "database": 1
-      },
-      "display": "table",
-      "visualization_settings": {
-        "table.pivot_column": "Ошибка",
-        "table.cell_column": "Количество",
-        "column_settings": {
-          "[\"name\",\"clinic_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"clinic_jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"mo_uid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_LOGID\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_log_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"service_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"transaction_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"local_uid\"]": {
-            "type": "text",
-            "display_as": null
-          }
-        }
-      },
-      "sizeX": 12,
-      "sizeY": 4,
-      "row": 0,
-      "col": 0
-    },
-    {
-      "name": "Heatmap доступности",
-      "description": "Почасовая плотность ошибок связи по клиникам за 7 дней.",
-      "table_ref": "v_unified_analytics",
-      "dataset_query": {
-        "type": "native",
-        "native": {
-          "query": "SELECT date_trunc('hour', ua.transaction_date) AS \"Hour\", ua.clinic_label AS \"Клиника\", COUNT(*)::bigint AS \"Ошибка связи\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.clinic_jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '7 days' AND (ua.error_category = 'Ошибка связи' OR ua.error_subcategory IN ('timeout', 'connection_refused', 'proxy')) [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1, 2 ORDER BY 1 ASC, 2 ASC;",
-          "template-tags": {
-            "clinic_jid": {
-              "id": "clinic_jid",
-              "name": "clinic_jid",
-              "display-name": "Client ID (JID)",
-              "type": "number",
-              "required": false
-            },
-            "organization_oid": {
-              "id": "organization_oid",
-              "name": "organization_oid",
-              "display-name": "Organization OID (Federal)",
-              "type": "text",
-              "required": false
-            },
-            "local_uid": {
-              "id": "local_uid",
-              "name": "local_uid",
-              "display-name": "LocalUID",
-              "type": "text",
-              "required": false
-            }
-          }
-        },
-        "database": 1
-      },
-      "display": "heatmap",
-      "visualization_settings": {
-        "graph.dimensions": [
-          "Hour",
-          "Клиника"
-        ],
-        "graph.metrics": [
-          "Ошибка связи"
-        ],
-        "column_settings": {
-          "[\"name\",\"clinic_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"clinic_jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"mo_uid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_LOGID\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_log_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"service_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"transaction_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"local_uid\"]": {
-            "type": "text",
-            "display_as": null
-          }
-        }
-      },
-      "sizeX": 12,
-      "sizeY": 4,
-      "row": 0,
-      "col": 12
-    },
-    {
-      "name": "Топ-20 ошибок ЕГИСЗ",
-      "description": "Таблица ошибок по структурированным полям кода и сообщения ошибки.",
-      "table_ref": "v_unified_analytics",
-      "dataset_query": {
-        "type": "native",
-        "native": {
-          "query": "SELECT ua.clinic_label AS \"Клиника\", COALESCE(NULLIF(TRIM(ua.error_category), ''), '[без категории]') AS \"Категория ошибки\", COALESCE(NULLIF(TRIM(ua.clean_error_text), ''), '[без сообщения]') AS \"Сообщение ошибки\", COUNT(*)::bigint AS \"Количество\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY ua.clinic_label, COALESCE(NULLIF(TRIM(ua.error_category), ''), '[без категории]'), COALESCE(NULLIF(TRIM(ua.clean_error_text), ''), '[без сообщения]') ORDER BY \"Количество\" DESC, \"Клиника\" ASC LIMIT 20;",
-          "template-tags": {
-            "clinic_jid": {
-              "id": "clinic_jid",
-              "name": "clinic_jid",
-              "display-name": "Client ID (JID)",
-              "type": "number",
-              "required": false
-            },
-            "organization_oid": {
-              "id": "organization_oid",
-              "name": "organization_oid",
-              "display-name": "Organization OID (Federal)",
-              "type": "text",
-              "required": false
-            },
-            "local_uid": {
-              "id": "local_uid",
-              "name": "local_uid",
-              "display-name": "LocalUID",
-              "type": "text",
-              "required": false
-            }
-          }
-        },
-        "database": 1
-      },
-      "display": "table",
-      "visualization_settings": {
-        "column_settings": {
-          "[\"name\",\"clinic_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"clinic_jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"mo_uid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_LOGID\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_log_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"service_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"transaction_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"local_uid\"]": {
-            "type": "text",
-            "display_as": null
-          }
-        }
-      },
-      "sizeX": 24,
-      "sizeY": 5,
-      "row": 4,
-      "col": 0
-    },
-    {
-      "name": "Доступность по reply_to",
-      "description": "Сетевые инциденты, сгруппированные по внешнему адресу медицинской организации.",
-      "table_ref": "v_unified_analytics",
-      "dataset_query": {
-        "type": "native",
-        "native": {
-          "query": "SELECT COALESCE(NULLIF(TRIM(ua.reply_to), ''), '[без reply_to]') AS \"reply_to\", COUNT(*)::bigint AS \"Инциденты\", COUNT(DISTINCT ua.clinic_jid)::bigint AS \"Клиники\", MAX(ua.transaction_date) AS \"Последний инцидент\" FROM public.v_unified_analytics ua WHERE ua.is_error AND (ua.error_category = 'Ошибка связи' OR ua.error_subcategory IN ('timeout', 'connection_refused', 'proxy')) AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1 ORDER BY \"Инциденты\" DESC, \"reply_to\" ASC LIMIT 50;",
-          "template-tags": {
-            "clinic_jid": {
-              "id": "clinic_jid",
-              "name": "clinic_jid",
-              "display-name": "Client ID (JID)",
-              "type": "number",
-              "required": false
-            },
-            "organization_oid": {
-              "id": "organization_oid",
-              "name": "organization_oid",
-              "display-name": "Organization OID (Federal)",
-              "type": "text",
-              "required": false
-            },
-            "local_uid": {
-              "id": "local_uid",
-              "name": "local_uid",
-              "display-name": "LocalUID",
-              "type": "text",
-              "required": false
-            }
-          }
-        },
-        "database": 1
-      },
-      "display": "table",
-      "visualization_settings": {
-        "column_settings": {
-          "[\"name\",\"clinic_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"clinic_jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"mo_uid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"local_uid\"]": {
-            "type": "text",
-            "display_as": null
-          },
-          "[\"name\",\"original_LOGID\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_log_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"service_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"transaction_id\"]": {
-            "display_as": null
-          }
-        }
-      },
-      "sizeX": 24,
-      "sizeY": 4,
-      "row": 9,
-      "col": 0
-    }
-  ],
-  "parameters": [
-    {
-      "id": "clinic_jid_filter",
-      "name": "Client ID (JID)",
-      "slug": "clinic_jid_filter",
-      "type": "number"
-    },
-    {
-      "id": "organization_oid_filter",
-      "name": "Organization OID (Federal)",
-      "slug": "organization_oid_filter",
-      "type": "text"
-    },
-    {
-      "id": "local_uid_filter",
-      "name": "LocalUID",
-      "slug": "local_uid_filter",
-      "type": "text"
-    }
-  ]
+    "name":  "Р СћР ВµРЎвЂ¦Р Р…Р С‘РЎвЂЎР ВµРЎРѓР С”Р В°РЎРЏ Р С—Р С•Р Т‘Р Т‘Р ВµРЎР‚Р В¶Р С”Р В°",
+    "description":  "Р вЂќР С‘Р В°Р С–Р Р…Р С•РЎРѓРЎвЂљР С‘Р С”Р В° Р С•РЎв‚¬Р С‘Р В±Р С•Р С” Р С‘Р Р…РЎвЂљР ВµР С–РЎР‚Р В°РЎвЂ Р С‘Р С‘, РЎРѓР ВµРЎвЂљР ВµР Р†РЎвЂ№РЎвЂ¦ Р С‘Р Р…РЎвЂ Р С‘Р Т‘Р ВµР Р…РЎвЂљР С•Р Р† Р С‘ Р С—Р С•Р Р†РЎвЂљР С•РЎР‚РЎРЏРЎР‹РЎвЂ°Р С‘РЎвЂ¦РЎРѓРЎРЏ Р С—РЎР‚Р С•Р В±Р В»Р ВµР С.",
+    "collection_id":  null,
+    "cards":  [
+                  {
+                      "name":  "Р РЋР ВµРЎвЂљР ВµР Р†РЎвЂ№Р Вµ Р С‘Р Р…РЎвЂ Р С‘Р Т‘Р ВµР Р…РЎвЂљРЎвЂ№ Р С—Р С• РЎРѓР ВµРЎР‚Р Р†Р С‘РЎРѓР В°Р С",
+                      "description":  "Р вЂњР Т‘Р Вµ РЎвЂЎР В°РЎвЂ°Р Вµ Р Р†РЎРѓР ВµР С–Р С• Р Р†Р С•Р В·Р Р…Р С‘Р С”Р В°РЎР‹РЎвЂљ Р С—РЎР‚Р С•Р В±Р В»Р ВµР СРЎвЂ№ РЎРѓР Р†РЎРЏР В·Р С‘: РЎРѓР ВµРЎР‚Р Р†Р С‘РЎРѓ + reply_to + Р С”Р В»Р С‘Р Р…Р С‘Р С”Р В°.",
+                      "table_ref":  "v_unified_analytics",
+                      "dataset_query":  {
+                                            "type":  "native",
+                                            "native":  {
+                                                           "query":  "SELECT COALESCE(NULLIF(TRIM(ua.service_channel), \u0027\u0027), \u0027РџСЂРѕС‡РµРµ\u0027) AS \"РЎРµСЂРІРёСЃ\", COALESCE(NULLIF(TRIM(ua.reply_to), \u0027\u0027), \u0027[Р±РµР· reply_to]\u0027) AS \"reply_to\", ua.clinic_label AS \"РњРћ\", COUNT(*)::bigint AS \"РРЅС†РёРґРµРЅС‚С‹\", MAX(ua.transaction_date) AS \"РџРѕСЃР»РµРґРЅРёР№ РёРЅС†РёРґРµРЅС‚\" FROM public.v_unified_analytics ua WHERE ua.is_error AND (ua.error_category = \u0027РћС€РёР±РєР° СЃРІСЏР·Рё\u0027 OR ua.error_subcategory IN (\u0027timeout\u0027, \u0027connection_refused\u0027, \u0027proxy\u0027)) [[ AND ua.transaction_date \u003e= {{date_from}} ]] [[ AND ua.transaction_date \u003c {{date_to}} ]] [[ AND (({{fixed_period}} = \u00277d\u0027 AND ua.transaction_date \u003e= NOW() - INTERVAL \u00277 days\u0027) OR ({{fixed_period}} = \u002730d\u0027 AND ua.transaction_date \u003e= NOW() - INTERVAL \u002730 days\u0027)) ]] [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.service_channel = {{service_channel}} ]] GROUP BY 1,2,3 ORDER BY \"РРЅС†РёРґРµРЅС‚С‹\" DESC LIMIT 100;",
+                                                           "template-tags":  {
+                                                                                 "clinic_jid":  {
+                                                                                                    "id":  "clinic_jid",
+                                                                                                    "name":  "clinic_jid",
+                                                                                                    "display-name":  "JID",
+                                                                                                    "type":  "number",
+                                                                                                    "required":  false
+                                                                                                },
+                                                                                 "organization_oid":  {
+                                                                                                          "id":  "organization_oid",
+                                                                                                          "name":  "organization_oid",
+                                                                                                          "display-name":  "Organization OID",
+                                                                                                          "type":  "text",
+                                                                                                          "required":  false
+                                                                                                      },
+                                                                                 "service_channel":  {
+                                                                                                         "id":  "service_channel",
+                                                                                                         "name":  "service_channel",
+                                                                                                         "display-name":  "Р РЋР ВµРЎР‚Р Р†Р С‘РЎРѓ",
+                                                                                                         "type":  "text",
+                                                                                                         "required":  false
+                                                                                                     },
+                                                                                 "date_from":  {
+                                                                                                   "id":  "date_from",
+                                                                                                   "name":  "date_from",
+                                                                                                   "display-name":  "Р”Р°С‚Р° СЃ",
+                                                                                                   "type":  "date",
+                                                                                                   "required":  false
+                                                                                               },
+                                                                                 "date_to":  {
+                                                                                                 "id":  "date_to",
+                                                                                                 "name":  "date_to",
+                                                                                                 "display-name":  "Р”Р°С‚Р° РїРѕ",
+                                                                                                 "type":  "date",
+                                                                                                 "required":  false
+                                                                                             },
+                                                                                 "fixed_period":  {
+                                                                                                      "id":  "fixed_period",
+                                                                                                      "name":  "fixed_period",
+                                                                                                      "display-name":  "Р¤РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ",
+                                                                                                      "type":  "text",
+                                                                                                      "required":  false
+                                                                                                  }
+                                                                             }
+                                                       },
+                                            "database":  1
+                                        },
+                      "display":  "table",
+                      "visualization_settings":  {
+
+                                                 },
+                      "sizeX":  12,
+                      "sizeY":  4,
+                      "row":  0,
+                      "col":  0
+                  },
+                  {
+                      "name":  "Р СџР С•РЎвЂЎР В°РЎРѓР С•Р Р†Р С•Р в„– heatmap Р С•РЎв‚¬Р С‘Р В±Р С•Р С”",
+                      "description":  "Р СџР В»Р С•РЎвЂљР Р…Р С•РЎРѓРЎвЂљРЎРЉ Р С•РЎв‚¬Р С‘Р В±Р С•Р С” Р С—Р С• РЎвЂЎР В°РЎРѓРЎС“ Р С‘ Р СР ВµР Т‘Р С‘РЎвЂ Р С‘Р Р…РЎРѓР С”Р С•Р в„– Р С•РЎР‚Р С–Р В°Р Р…Р С‘Р В·Р В°РЎвЂ Р С‘Р С‘ Р В·Р В° Р С—Р С•РЎРѓР В»Р ВµР Т‘Р Р…Р С‘Р Вµ 7 Р Т‘Р Р…Р ВµР в„–.",
+                      "table_ref":  "v_unified_analytics",
+                      "dataset_query":  {
+                                            "type":  "native",
+                                            "native":  {
+                                                           "query":  "SELECT date_trunc(\u0027hour\u0027, ua.transaction_date) AS \"Р§Р°СЃ\", ua.clinic_label AS \"РњРћ\", COUNT(*)::bigint AS \"РћС€РёР±РєРё\" FROM public.v_unified_analytics ua WHERE ua.is_error [[ AND ua.transaction_date \u003e= {{date_from}} ]] [[ AND ua.transaction_date \u003c {{date_to}} ]] [[ AND (({{fixed_period}} = \u00277d\u0027 AND ua.transaction_date \u003e= NOW() - INTERVAL \u00277 days\u0027) OR ({{fixed_period}} = \u002730d\u0027 AND ua.transaction_date \u003e= NOW() - INTERVAL \u002730 days\u0027)) ]] [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.service_channel = {{service_channel}} ]] GROUP BY 1,2 ORDER BY 1 ASC, 2 ASC;",
+                                                           "template-tags":  {
+                                                                                 "clinic_jid":  {
+                                                                                                    "id":  "clinic_jid",
+                                                                                                    "name":  "clinic_jid",
+                                                                                                    "display-name":  "JID",
+                                                                                                    "type":  "number",
+                                                                                                    "required":  false
+                                                                                                },
+                                                                                 "organization_oid":  {
+                                                                                                          "id":  "organization_oid",
+                                                                                                          "name":  "organization_oid",
+                                                                                                          "display-name":  "Organization OID",
+                                                                                                          "type":  "text",
+                                                                                                          "required":  false
+                                                                                                      },
+                                                                                 "service_channel":  {
+                                                                                                         "id":  "service_channel",
+                                                                                                         "name":  "service_channel",
+                                                                                                         "display-name":  "Р РЋР ВµРЎР‚Р Р†Р С‘РЎРѓ",
+                                                                                                         "type":  "text",
+                                                                                                         "required":  false
+                                                                                                     },
+                                                                                 "date_from":  {
+                                                                                                   "id":  "date_from",
+                                                                                                   "name":  "date_from",
+                                                                                                   "display-name":  "Р”Р°С‚Р° СЃ",
+                                                                                                   "type":  "date",
+                                                                                                   "required":  false
+                                                                                               },
+                                                                                 "date_to":  {
+                                                                                                 "id":  "date_to",
+                                                                                                 "name":  "date_to",
+                                                                                                 "display-name":  "Р”Р°С‚Р° РїРѕ",
+                                                                                                 "type":  "date",
+                                                                                                 "required":  false
+                                                                                             },
+                                                                                 "fixed_period":  {
+                                                                                                      "id":  "fixed_period",
+                                                                                                      "name":  "fixed_period",
+                                                                                                      "display-name":  "Р¤РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ",
+                                                                                                      "type":  "text",
+                                                                                                      "required":  false
+                                                                                                  }
+                                                                             }
+                                                       },
+                                            "database":  1
+                                        },
+                      "display":  "heatmap",
+                      "visualization_settings":  {
+                                                     "graph.dimensions":  [
+                                                                              "Р В§Р В°РЎРѓ",
+                                                                              "Р СљР С›"
+                                                                          ],
+                                                     "graph.metrics":  [
+                                                                           "Р С›РЎв‚¬Р С‘Р В±Р С”Р С‘"
+                                                                       ]
+                                                 },
+                      "sizeX":  12,
+                      "sizeY":  4,
+                      "row":  0,
+                      "col":  12
+                  },
+                  {
+                      "name":  "Р–СѓСЂРЅР°Р» РѕС€РёР±РѕРє",
+                      "description":  "Р СџР С•РЎРѓР В»Р ВµР Т‘Р Р…Р С‘Р Вµ Р С•РЎв‚¬Р С‘Р В±Р С•РЎвЂЎР Р…РЎвЂ№Р Вµ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С”Р С‘ РЎРѓ Р С”Р С•Р Т‘Р С•Р С/РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С Р С•РЎв‚¬Р С‘Р В±Р С”Р С‘ Р С‘ Р С”Р С•Р Р…РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С Р РЋР В­Р СљР вЂќ.",
+                      "table_ref":  "v_unified_analytics",
+                      "dataset_query":  {
+                                            "type":  "native",
+                                            "native":  {
+                                                           "query":  "SELECT ua.transaction_date AS \"MODIFYDATE\", ua.clinic_label AS \"РќР°РёРјРµРЅРѕРІР°РЅРёРµ РњРћ\", COALESCE(NULLIF(NULLIF(TRIM(ua.document_kind), \u0027UNKNOWN\u0027), \u0027\u0027), NULLIF(NULLIF(TRIM(ua.service_kind), \u0027UNKNOWN\u0027), \u0027\u0027), \u0027РќРµ СѓРєР°Р·Р°РЅ\u0027) AS \"РўРёРї РЎР­РњР”\", COALESCE(NULLIF(TRIM(ua.document_name), \u0027\u0027), \u0027[РЅР°РёРјРµРЅРѕРІР°РЅРёРµ РЎР­РњР” РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚]\u0027) AS \"РќР°РёРјРµРЅРѕРІР°РЅРёРµ РЎР­РњР”\", COALESCE(NULLIF(TRIM(ua.service_channel), \u0027\u0027), \u0027РџСЂРѕС‡РµРµ\u0027) AS \"РЎРµСЂРІРёСЃ\", COALESCE(NULLIF(TRIM(ua.error_text), \u0027\u0027), NULLIF(TRIM(ua.clean_error_text), \u0027\u0027), \u0027[Р±РµР· С‚РµРєСЃС‚Р°]\u0027) AS \"РўРµРєСЃС‚ РѕС€РёР±РєРё\", COALESCE(NULLIF(TRIM(ua.local_uid), \u0027\u0027), \u0027-\u0027) AS \"LocalUID\" FROM public.v_unified_analytics ua WHERE ua.is_error [[ AND ua.transaction_date \u003e= {{date_from}} ]] [[ AND ua.transaction_date \u003c {{date_to}} ]] [[ AND (({{fixed_period}} = \u00277d\u0027 AND ua.transaction_date \u003e= NOW() - INTERVAL \u00277 days\u0027) OR ({{fixed_period}} = \u002730d\u0027 AND ua.transaction_date \u003e= NOW() - INTERVAL \u002730 days\u0027)) ]] [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT(\u0027%\u0027, {{local_uid}}, \u0027%\u0027 ) ]] [[ AND ua.service_channel = {{service_channel}} ]] ORDER BY ua.transaction_date DESC LIMIT 300;",
+                                                           "template-tags":  {
+                                                                                 "clinic_jid":  {
+                                                                                                    "id":  "clinic_jid",
+                                                                                                    "name":  "clinic_jid",
+                                                                                                    "display-name":  "JID",
+                                                                                                    "type":  "number",
+                                                                                                    "required":  false
+                                                                                                },
+                                                                                 "organization_oid":  {
+                                                                                                          "id":  "organization_oid",
+                                                                                                          "name":  "organization_oid",
+                                                                                                          "display-name":  "Organization OID",
+                                                                                                          "type":  "text",
+                                                                                                          "required":  false
+                                                                                                      },
+                                                                                 "local_uid":  {
+                                                                                                   "id":  "local_uid",
+                                                                                                   "name":  "local_uid",
+                                                                                                   "display-name":  "LocalUID",
+                                                                                                   "type":  "text",
+                                                                                                   "required":  false
+                                                                                               },
+                                                                                 "service_channel":  {
+                                                                                                         "id":  "service_channel",
+                                                                                                         "name":  "service_channel",
+                                                                                                         "display-name":  "Р РЋР ВµРЎР‚Р Р†Р С‘РЎРѓ",
+                                                                                                         "type":  "text",
+                                                                                                         "required":  false
+                                                                                                     },
+                                                                                 "date_from":  {
+                                                                                                   "id":  "date_from",
+                                                                                                   "name":  "date_from",
+                                                                                                   "display-name":  "Р”Р°С‚Р° СЃ",
+                                                                                                   "type":  "date",
+                                                                                                   "required":  false
+                                                                                               },
+                                                                                 "date_to":  {
+                                                                                                 "id":  "date_to",
+                                                                                                 "name":  "date_to",
+                                                                                                 "display-name":  "Р”Р°С‚Р° РїРѕ",
+                                                                                                 "type":  "date",
+                                                                                                 "required":  false
+                                                                                             },
+                                                                                 "fixed_period":  {
+                                                                                                      "id":  "fixed_period",
+                                                                                                      "name":  "fixed_period",
+                                                                                                      "display-name":  "Р¤РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ",
+                                                                                                      "type":  "text",
+                                                                                                      "required":  false
+                                                                                                  }
+                                                                             }
+                                                       },
+                                            "database":  1
+                                        },
+                      "display":  "table",
+                      "visualization_settings":  {
+
+                                                 },
+                      "sizeX":  24,
+                      "sizeY":  4,
+                      "row":  4,
+                      "col":  0
+                  },
+                  {
+                      "name":  "Топ ошибок из ns2:message",
+                      "description":  "Топ ошибок по типу (категория + код + нормализованный текст) с явным JID клиники.",
+                      "table_ref":  "v_unified_analytics",
+                      "dataset_query":  {
+                                            "type":  "native",
+                                            "native":  {
+                                                           "query":  "SELECT COALESCE(NULLIF(TRIM(ua.error_category), \u0027\u0027), \u0027Ошибка\u0027) AS \"Тип ошибки\", COALESCE(NULLIF(TRIM(ua.error_code), \u0027\u0027), \u0027-\u0027) AS \"Код ошибки\", ua.clinic_jid AS \"JID\", COALESCE(NULLIF(TRIM(ua.clean_error_text), \u0027\u0027), NULLIF(TRIM(ua.error_message), \u0027\u0027), NULLIF(TRIM(ua.error_text), \u0027\u0027), \u0027[без текста]\u0027) AS \"Текст ошибки\", COUNT(*)::bigint AS \"Кол-во\", MAX(ua.transaction_date) AS \"Последний инцидент\" FROM public.v_unified_analytics ua WHERE ua.is_error [[ AND ua.transaction_date \u003e= {{date_from}} ]] [[ AND ua.transaction_date \u003c {{date_to}} ]] [[ AND (({{fixed_period}} = \u00277d\u0027 AND ua.transaction_date \u003e= NOW() - INTERVAL \u00277 days\u0027) OR ({{fixed_period}} = \u002730d\u0027 AND ua.transaction_date \u003e= NOW() - INTERVAL \u002730 days\u0027)) ]] [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT(\u0027%\u0027, {{local_uid}}, \u0027%\u0027 ) ]] [[ AND ua.service_channel = {{service_channel}} ]] GROUP BY 1,2,3,4 ORDER BY \"Кол-во\" DESC LIMIT 100;",
+                                                           "template-tags":  {
+                                                                                 "clinic_jid":  {
+                                                                                                    "id":  "clinic_jid",
+                                                                                                    "name":  "clinic_jid",
+                                                                                                    "display-name":  "JID",
+                                                                                                    "type":  "number",
+                                                                                                    "required":  false
+                                                                                                },
+                                                                                 "organization_oid":  {
+                                                                                                          "id":  "organization_oid",
+                                                                                                          "name":  "organization_oid",
+                                                                                                          "display-name":  "Organization OID",
+                                                                                                          "type":  "text",
+                                                                                                          "required":  false
+                                                                                                      },
+                                                                                 "service_channel":  {
+                                                                                                         "id":  "service_channel",
+                                                                                                         "name":  "service_channel",
+                                                                                                         "display-name":  "Сервис",
+                                                                                                         "type":  "text",
+                                                                                                         "required":  false
+                                                                                                     },
+                                                                                 "local_uid":  {
+                                                                                                   "id":  "local_uid",
+                                                                                                   "name":  "local_uid",
+                                                                                                   "display-name":  "LocalUID",
+                                                                                                   "type":  "text",
+                                                                                                   "required":  false
+                                                                                               },
+                                                                                 "date_from":  {
+                                                                                                   "id":  "date_from",
+                                                                                                   "name":  "date_from",
+                                                                                                   "display-name":  "Дата с",
+                                                                                                   "type":  "date",
+                                                                                                   "required":  false
+                                                                                               },
+                                                                                 "date_to":  {
+                                                                                                 "id":  "date_to",
+                                                                                                 "name":  "date_to",
+                                                                                                 "display-name":  "Дата по",
+                                                                                                 "type":  "date",
+                                                                                                 "required":  false
+                                                                                             },
+                                                                                 "fixed_period":  {
+                                                                                                      "id":  "fixed_period",
+                                                                                                      "name":  "fixed_period",
+                                                                                                      "display-name":  "Фиксированный период",
+                                                                                                      "type":  "text",
+                                                                                                      "required":  false
+                                                                                                  }
+                                                                             }
+                                                       },
+                                            "database":  1
+                                        },
+                      "display":  "table",
+                      "visualization_settings":  {
+
+                                                 },
+                      "sizeX":  24,
+                      "sizeY":  4,
+                      "row":  8,
+                      "col":  0
+                  }
+              ],
+    "parameters":  [
+                       {
+                           "id":  "clinic_jid_filter",
+                           "name":  "JID",
+                           "slug":  "clinic_jid_filter",
+                           "type":  "number"
+                       },
+                       {
+                           "id":  "organization_oid_filter",
+                           "name":  "Organization OID",
+                           "slug":  "organization_oid_filter",
+                           "type":  "text"
+                       },
+                       {
+                           "id":  "service_channel_filter",
+                           "name":  "Р РЋР ВµРЎР‚Р Р†Р С‘РЎРѓ",
+                           "slug":  "service_channel_filter",
+                           "type":  "text"
+                       },
+                       {
+                           "id":  "local_uid_filter",
+                           "name":  "LocalUID",
+                           "slug":  "local_uid_filter",
+                           "type":  "text"
+                       },
+                       {
+                           "id":  "date_from_filter",
+                           "name":  "Р”Р°С‚Р° СЃ",
+                           "slug":  "date_from_filter",
+                           "type":  "date"
+                       },
+                       {
+                           "id":  "date_to_filter",
+                           "name":  "Р”Р°С‚Р° РїРѕ",
+                           "slug":  "date_to_filter",
+                           "type":  "date"
+                       },
+                       {
+                           "id":  "fixed_period_filter",
+                           "name":  "РџРµСЂРёРѕРґ (7/30 РґРЅРµР№)",
+                           "slug":  "fixed_period_filter",
+                           "type":  "text"
+                       }
+                   ]
 }

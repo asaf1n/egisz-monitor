@@ -1,93 +1,63 @@
-{
-  "name": "Технические метрики",
-  "description": "Расширенный технический контур: Heatmap сетевых ошибок, анализ НСИ и нормализованный журнал ошибок.",
+﻿{
+  "name": "Использование СЭМД",
+  "description": "Распределение и динамика типов СЭМД за период с фильтрами по клинике и сервису.",
   "collection_id": null,
   "cards": [
     {
-      "name": "Heatmap здоровья",
-      "description": "Ошибки связи по JID в почасовом разрезе за 7 дней.",
+      "name": "Журнал используемых СЭМД",
+      "description": "Диаграмма распределения по количеству разных типов СЭМД за период.",
       "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT date_trunc('hour', ua.transaction_date) AS \"Hour\", ua.jid AS \"JID\", COUNT(*)::bigint AS \"Ошибки связи\" FROM public.v_unified_analytics ua WHERE ua.is_error AND (ua.error_category = 'Ошибка связи' OR ua.error_subcategory IN ('timeout', 'connection_refused', 'proxy')) AND ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '7 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY 1, 2 ORDER BY 1, 2;",
+          "query": "SELECT COALESCE(NULLIF(NULLIF(TRIM(ua.document_kind), 'UNKNOWN'), ''), NULLIF(NULLIF(TRIM(ua.service_kind), 'UNKNOWN'), ''), 'Не указан') AS \"Тип СЭМД\", COALESCE(NULLIF(TRIM(ua.document_name), ''), '[наименование СЭМД отсутствует]') AS \"Наименование СЭМД\", COUNT(*)::bigint AS \"Количество\" FROM public.v_unified_analytics ua WHERE 1=1 [[ AND ua.transaction_date >= {{date_from}} ]] [[ AND ua.transaction_date < {{date_to}} ]] [[ AND (({{fixed_period}} = '7d' AND ua.transaction_date >= NOW() - INTERVAL '7 days') OR ({{fixed_period}} = '30d' AND ua.transaction_date >= NOW() - INTERVAL '30 days')) ]] [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.service_channel = {{service_channel}} ]] [[ AND COALESCE(NULLIF(NULLIF(TRIM(ua.document_kind), 'UNKNOWN'), ''), NULLIF(NULLIF(TRIM(ua.service_kind), 'UNKNOWN'), ''), 'Не указан') = {{semd_type}} ]] GROUP BY 1,2 ORDER BY \"Количество\" DESC LIMIT 30;",
           "template-tags": {
+            "date_from": {
+              "id": "date_from",
+              "name": "date_from",
+              "display-name": "Дата с",
+              "type": "date",
+              "required": false
+            },
+            "date_to": {
+              "id": "date_to",
+              "name": "date_to",
+              "display-name": "Дата по",
+              "type": "date",
+              "required": false
+            },
             "clinic_jid": {
               "id": "clinic_jid",
               "name": "clinic_jid",
-              "display-name": "Client ID (JID)",
+              "display-name": "JID",
               "type": "number",
               "required": false
             },
             "organization_oid": {
               "id": "organization_oid",
               "name": "organization_oid",
-              "display-name": "Organization OID (Federal)",
+              "display-name": "Organization OID",
               "type": "text",
               "required": false
-            }
-          }
-        },
-        "database": 1
-      },
-      "display": "heatmap",
-      "visualization_settings": {
-        "column_settings": {
-          "[\"name\",\"clinic_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"clinic_jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"mo_uid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_LOGID\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_log_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"service_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"transaction_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"local_uid\"]": {
-            "type": "text",
-            "display_as": null
-          }
-        }
-      },
-      "sizeX": 12,
-      "sizeY": 4,
-      "row": 0,
-      "col": 0
-    },
-    {
-      "name": "Анализ НСИ",
-      "description": "KIND, по которым чаще встречаются ошибки заполнения реквизитов и НСИ.",
-      "table_ref": "v_unified_analytics",
-      "dataset_query": {
-        "type": "native",
-        "native": {
-          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_kind), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"KIND\", COUNT(*)::bigint AS \"Ошибки НСИ\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.error_subcategory = 'validation' AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY 1 ORDER BY \"Ошибки НСИ\" DESC;",
-          "template-tags": {
-            "clinic_jid": {
-              "id": "clinic_jid",
-              "name": "clinic_jid",
-              "display-name": "Client ID (JID)",
-              "type": "number",
+            },
+            "service_channel": {
+              "id": "service_channel",
+              "name": "service_channel",
+              "display-name": "Сервис",
+              "type": "text",
               "required": false
             },
-            "organization_oid": {
-              "id": "organization_oid",
-              "name": "organization_oid",
-              "display-name": "Organization OID (Federal)",
+            "semd_type": {
+              "id": "semd_type",
+              "name": "semd_type",
+              "display-name": "Тип СЭМД",
+              "type": "text",
+              "required": false
+            },
+            "fixed_period": {
+              "id": "fixed_period",
+              "name": "fixed_period",
+              "display-name": "Фиксированный период",
               "type": "text",
               "required": false
             }
@@ -98,41 +68,88 @@
       "display": "bar",
       "visualization_settings": {
         "graph.dimensions": [
-          "KIND"
+          "Тип СЭМД"
         ],
         "graph.metrics": [
-          "Ошибки НСИ"
-        ],
-        "column_settings": {
-          "[\"name\",\"clinic_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"clinic_jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"mo_uid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_LOGID\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_log_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"service_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"transaction_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"local_uid\"]": {
-            "type": "text",
-            "display_as": null
+          "Количество"
+        ]
+      },
+      "sizeX": 12,
+      "sizeY": 4,
+      "row": 0,
+      "col": 0
+    },
+    {
+      "name": "Динамика отправок по типам СЭМД",
+      "description": "Помесячно/подневно можно видеть рост или падение активности по типам СЭМД.",
+      "table_ref": "v_unified_analytics",
+      "dataset_query": {
+        "type": "native",
+        "native": {
+          "query": "SELECT date_trunc('day', ua.transaction_date)::date AS \"Дата\", COALESCE(NULLIF(NULLIF(TRIM(ua.document_kind), 'UNKNOWN'), ''), NULLIF(NULLIF(TRIM(ua.service_kind), 'UNKNOWN'), ''), 'Не указан') AS \"Тип СЭМД\", COUNT(*)::bigint AS \"Количество\" FROM public.v_unified_analytics ua WHERE 1=1 [[ AND ua.transaction_date >= {{date_from}} ]] [[ AND ua.transaction_date < {{date_to}} ]] [[ AND (({{fixed_period}} = '7d' AND ua.transaction_date >= NOW() - INTERVAL '7 days') OR ({{fixed_period}} = '30d' AND ua.transaction_date >= NOW() - INTERVAL '30 days')) ]] [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.service_channel = {{service_channel}} ]] [[ AND COALESCE(NULLIF(NULLIF(TRIM(ua.document_kind), 'UNKNOWN'), ''), NULLIF(NULLIF(TRIM(ua.service_kind), 'UNKNOWN'), ''), 'Не указан') = {{semd_type}} ]] GROUP BY 1,2 ORDER BY 1 ASC, 3 DESC;",
+          "template-tags": {
+            "date_from": {
+              "id": "date_from",
+              "name": "date_from",
+              "display-name": "Дата с",
+              "type": "date",
+              "required": false
+            },
+            "date_to": {
+              "id": "date_to",
+              "name": "date_to",
+              "display-name": "Дата по",
+              "type": "date",
+              "required": false
+            },
+            "clinic_jid": {
+              "id": "clinic_jid",
+              "name": "clinic_jid",
+              "display-name": "JID",
+              "type": "number",
+              "required": false
+            },
+            "organization_oid": {
+              "id": "organization_oid",
+              "name": "organization_oid",
+              "display-name": "Organization OID",
+              "type": "text",
+              "required": false
+            },
+            "service_channel": {
+              "id": "service_channel",
+              "name": "service_channel",
+              "display-name": "Сервис",
+              "type": "text",
+              "required": false
+            },
+            "semd_type": {
+              "id": "semd_type",
+              "name": "semd_type",
+              "display-name": "Тип СЭМД",
+              "type": "text",
+              "required": false
+            },
+            "fixed_period": {
+              "id": "fixed_period",
+              "name": "fixed_period",
+              "display-name": "Фиксированный период",
+              "type": "text",
+              "required": false
+            }
           }
-        }
+        },
+        "database": 1
+      },
+      "display": "line",
+      "visualization_settings": {
+        "graph.dimensions": [
+          "Дата",
+          "Тип СЭМД"
+        ],
+        "graph.metrics": [
+          "Количество"
+        ]
       },
       "sizeX": 12,
       "sizeY": 4,
@@ -140,25 +157,60 @@
       "col": 12
     },
     {
-      "name": "Нормализованный лог",
-      "description": "Список ошибок, очищенный от host, IP и динамических идентификаторов, для передачи в разработку.",
+      "name": "Сводка по клиникам и типам СЭМД",
+      "description": "Какие МО и какие типы СЭМД дают основной объём и ошибки.",
       "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT ua.clean_error_text AS \"Текст ошибки\", ua.error_category AS \"Категория\", COUNT(*)::bigint AS \"Частота\", COUNT(DISTINCT ua.jid)::bigint AS \"Клиники\", MAX(ua.transaction_date) AS \"Последний инцидент\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY ua.clean_error_text, ua.error_category ORDER BY \"Частота\" DESC LIMIT 100;",
+          "query": "SELECT ua.clinic_label AS \"Наименование МО\", COALESCE(NULLIF(NULLIF(TRIM(ua.document_kind), 'UNKNOWN'), ''), NULLIF(NULLIF(TRIM(ua.service_kind), 'UNKNOWN'), ''), 'Не указан') AS \"Тип СЭМД\", COALESCE(NULLIF(TRIM(ua.document_name), ''), '[наименование СЭМД отсутствует]') AS \"Наименование СЭМД\", COUNT(*)::bigint AS \"Всего\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"С ошибкой\" FROM public.v_unified_analytics ua WHERE 1=1 [[ AND ua.transaction_date >= {{date_from}} ]] [[ AND ua.transaction_date < {{date_to}} ]] [[ AND (({{fixed_period}} = '7d' AND ua.transaction_date >= NOW() - INTERVAL '7 days') OR ({{fixed_period}} = '30d' AND ua.transaction_date >= NOW() - INTERVAL '30 days')) ]] [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.service_channel = {{service_channel}} ]] [[ AND COALESCE(NULLIF(NULLIF(TRIM(ua.document_kind), 'UNKNOWN'), ''), NULLIF(NULLIF(TRIM(ua.service_kind), 'UNKNOWN'), ''), 'Не указан') = {{semd_type}} ]] GROUP BY 1,2,3 ORDER BY \"Всего\" DESC LIMIT 100;",
           "template-tags": {
+            "date_from": {
+              "id": "date_from",
+              "name": "date_from",
+              "display-name": "Дата с",
+              "type": "date",
+              "required": false
+            },
+            "date_to": {
+              "id": "date_to",
+              "name": "date_to",
+              "display-name": "Дата по",
+              "type": "date",
+              "required": false
+            },
             "clinic_jid": {
               "id": "clinic_jid",
               "name": "clinic_jid",
-              "display-name": "Client ID (JID)",
+              "display-name": "JID",
               "type": "number",
               "required": false
             },
             "organization_oid": {
               "id": "organization_oid",
               "name": "organization_oid",
-              "display-name": "Organization OID (Federal)",
+              "display-name": "Organization OID",
+              "type": "text",
+              "required": false
+            },
+            "service_channel": {
+              "id": "service_channel",
+              "name": "service_channel",
+              "display-name": "Сервис",
+              "type": "text",
+              "required": false
+            },
+            "semd_type": {
+              "id": "semd_type",
+              "name": "semd_type",
+              "display-name": "Тип СЭМД",
+              "type": "text",
+              "required": false
+            },
+            "fixed_period": {
+              "id": "fixed_period",
+              "name": "fixed_period",
+              "display-name": "Фиксированный период",
               "type": "text",
               "required": false
             }
@@ -167,120 +219,54 @@
         "database": 1
       },
       "display": "table",
-      "visualization_settings": {
-        "column_settings": {
-          "[\"name\",\"clinic_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"clinic_jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"mo_uid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_LOGID\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_log_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"service_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"transaction_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"local_uid\"]": {
-            "type": "text",
-            "display_as": null
-          }
-        }
-      },
-      "sizeX": 24,
-      "sizeY": 5,
-      "row": 4,
-      "col": 0
-    },
-    {
-      "name": "Стабильность по reply_to",
-      "description": "Сетевые инциденты, сгруппированные по внешнему адресу медицинской организации.",
-      "table_ref": "v_unified_analytics",
-      "dataset_query": {
-        "type": "native",
-        "native": {
-          "query": "SELECT COALESCE(NULLIF(TRIM(ua.reply_to), ''), '[без reply_to]') AS \"reply_to\", COUNT(*)::bigint AS \"Инциденты\", COUNT(DISTINCT ua.clinic_jid)::bigint AS \"Клиники\", MAX(ua.transaction_date) AS \"Последний инцидент\" FROM public.v_unified_analytics ua WHERE ua.is_error AND (ua.error_category = 'Ошибка связи' OR ua.error_subcategory IN ('timeout', 'connection_refused', 'proxy')) AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY 1 ORDER BY \"Инциденты\" DESC, \"reply_to\" ASC LIMIT 50;",
-          "template-tags": {
-            "clinic_jid": {
-              "id": "clinic_jid",
-              "name": "clinic_jid",
-              "display-name": "Client ID (JID)",
-              "type": "number",
-              "required": false
-            },
-            "organization_oid": {
-              "id": "organization_oid",
-              "name": "organization_oid",
-              "display-name": "Organization OID (Federal)",
-              "type": "text",
-              "required": false
-            }
-          }
-        },
-        "database": 1
-      },
-      "display": "table",
-      "visualization_settings": {
-        "column_settings": {
-          "[\"name\",\"clinic_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"clinic_jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"jid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"mo_uid\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"local_uid\"]": {
-            "type": "text",
-            "display_as": null
-          },
-          "[\"name\",\"original_LOGID\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"original_log_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"service_id\"]": {
-            "display_as": null
-          },
-          "[\"name\",\"transaction_id\"]": {
-            "display_as": null
-          }
-        }
-      },
+      "visualization_settings": {},
       "sizeX": 24,
       "sizeY": 4,
-      "row": 9,
+      "row": 4,
       "col": 0
     }
   ],
   "parameters": [
     {
+      "id": "date_from_filter",
+      "name": "Дата с",
+      "slug": "date_from_filter",
+      "type": "date"
+    },
+    {
+      "id": "date_to_filter",
+      "name": "Дата по",
+      "slug": "date_to_filter",
+      "type": "date"
+    },
+    {
       "id": "clinic_jid_filter",
-      "name": "Client ID (JID)",
+      "name": "JID",
       "slug": "clinic_jid_filter",
       "type": "number"
     },
     {
       "id": "organization_oid_filter",
-      "name": "Organization OID (Federal)",
+      "name": "Organization OID",
       "slug": "organization_oid_filter",
+      "type": "text"
+    },
+    {
+      "id": "service_channel_filter",
+      "name": "Сервис",
+      "slug": "service_channel_filter",
+      "type": "text"
+    },
+    {
+      "id": "semd_type_filter",
+      "name": "Тип СЭМД",
+      "slug": "semd_type_filter",
+      "type": "text"
+    },
+    {
+      "id": "fixed_period_filter",
+      "name": "Период (7/30 дней)",
+      "slug": "fixed_period_filter",
       "type": "text"
     }
   ]

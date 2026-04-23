@@ -14,6 +14,13 @@ const EXCLUDED_HOSTNAME_FRAGMENTS = [
   "host.docker.internal",
   "localhost"
 ] as const;
+const CLINIC_NOT_FOUND_LITERAL = "Не найдена клиника";
+const DOCUMENT_NOT_FOUND_LITERAL = "Документ не найден";
+const HOST_NOT_FOUND_LITERAL = "Хост не найден";
+const SERVICE_PORT_IEMK = 9921;
+const SERVICE_PORT_REMD = 9901;
+const SERVICE_PORT_IGNORE = 9945;
+const POSSIBLE_PORT_AS_JID = new Set<number>([SERVICE_PORT_IEMK, SERVICE_PORT_REMD, SERVICE_PORT_IGNORE]);
 const RAW_NETWORK_ERROR_PATTERN = /(Socket error|Host not found|CA_INACCESSIBILITY)/i;
 const FIREBIRD_ETL_PAGE_SIZE = (() => {
   const parsed = Number(process.env.FIREBIRD_ETL_PAGE_SIZE ?? "200");
@@ -394,6 +401,7 @@ export class EtlService {
     const replyToValue =
       this.normalizeText(this.toOptionalString(row.REPLYTO)) ??
       parsedMessage.replyTo;
+    const replyToEndpoint = this.parseClinicEndpoint(replyToValue);
     const replyToDomain = this.normalizeClinicHostname(this.normalizeHostname(replyToValue));
     const localUid =
       this.normalizeCodeValue(row.DOCUMENTID) ??
@@ -404,30 +412,40 @@ export class EtlService {
       explicitMoUid ??
       organizationOid ??
       `unresolved-oid-${originalLogId}`;
-    const sourceJid = this.toOptionalNumber(row.JID);
-    const jid = sourceJid ?? 0;
-    const isUnresolvedClinic = sourceJid === null;
-    const unresolvedClinicMarker =
-      this.normalizeCodeValue(this.toOptionalNumber(row.PARENTLOGID) ?? this.toOptionalNumber(row.GRPID)) ??
-      this.normalizeCodeValue(originalLogId) ??
-      "unknown";
-    const jname =
-      isUnresolvedClinic
-        ? `Не сопоставлено (нет JID) [${unresolvedClinicMarker}]`
-        : this.normalizeText(this.toOptionalString(row.JNAME));
+    const sourceJid = this.normalizeJidCandidate(this.toOptionalNumber(row.JID));
+    const hostDerivedJid = this.normalizeJidCandidate(replyToEndpoint.jid);
+    const jid = sourceJid ?? hostDerivedJid ?? 0;
+    const isUnresolvedClinic = jid <= 0;
+    const jname = this.toHumanReadableLabel(
+      this.normalizeText(this.toOptionalString(row.JNAME)),
+      CLINIC_NOT_FOUND_LITERAL
+    );
     const hostnameCandidates = this.collectHostnameCandidates(
       replyToValue,
       parsedMessage.hostname,
       logText,
       messageText
     );
-    const hostname = this.findTargetClinicHostname(hostnameCandidates);
+    const hostname = this.toHumanReadableLabel(
+      this.findTargetClinicHostname(hostnameCandidates),
+      HOST_NOT_FOUND_LITERAL
+    );
     const serviceDescription = this.buildServiceDescription(uri, method, action, row);
-    const kindCode = this.normalizeCodeValue(row.KIND) ?? parsedMessage.fallbackKind;
+    const fallbackKindCode = this.normalizeCodeValue(this.toOptionalString(row.LICENSE_KIND));
+    const kindCode = this.normalizeCodeValue(row.KIND) ?? fallbackKindCode ?? parsedMessage.fallbackKind;
     const kindLabel = kindCode ?? "UNKNOWN";
-    const normalizedDocumentName = semdDictionary[kindLabel] ?? `[${kindLabel}] \u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435 \u0421\u042d\u041c\u0414 \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442`;
+    const fallbackKindName = this.normalizeText(this.toOptionalString(row.LICENSE_KIND));
+    const normalizedDocumentName = this.toHumanReadableLabel(
+      semdDictionary[kindLabel] ?? fallbackKindName,
+      DOCUMENT_NOT_FOUND_LITERAL
+    );
     const kind = kindCode ?? "UNKNOWN";
-    const serviceType = this.normalizeCodeValue(row.SERVICE_TYPE) ?? this.normalizeCodeValue(row.LOGTYPE) ?? kind;
+    const serviceTypeByPort = this.resolveServiceTypeByPort(replyToEndpoint.port);
+    const serviceType =
+      serviceTypeByPort ??
+      this.normalizeCodeValue(row.SERVICE_TYPE) ??
+      this.normalizeCodeValue(row.LOGTYPE) ??
+      kind;
     const transactionDate =
       this.toOptionalDate(row.MODIFYDATE) ??
       this.toOptionalDate(row.LOG_CREATED_AT) ??
@@ -821,7 +839,11 @@ export class EtlService {
       return false;
     }
 
-    return this.extractJid(hostname) !== null;
+    return this.isClinicHostnameByConvention(hostname);
+  }
+
+  private isClinicHostnameByConvention(hostname: string): boolean {
+    return /^gost-[a-z0-9-]+\.infoclinica\.lan$/i.test(hostname);
   }
 
   private isFqdn(value: string): boolean {
@@ -863,17 +885,89 @@ export class EtlService {
   }
 
   private extractJid(value: string | null): number | null {
-    if (!value) {
+    const normalized = this.normalizeHostname(value);
+
+    if (!normalized) {
       return null;
     }
 
-    const hostMatch = value.match(/gost-(\d+)\.infoclinica\.lan/i);
-    if (hostMatch) {
-      return Number(hostMatch[1]);
+    const hostMatch = normalized.match(/^gost-(\d+)(?:-[a-z0-9-]*)?\.infoclinica\.lan$/i);
+    return hostMatch ? Number(hostMatch[1]) : null;
+  }
+
+  private normalizeJidCandidate(value: number | null): number | null {
+    if (value === null || !Number.isFinite(value)) {
+      return null;
     }
 
-    const match = value.match(/(?:^|[\.-])gost-(\d+)(?:[\.-]|$)/i);
-    return match ? Number(match[1]) : null;
+    const normalized = Math.trunc(value);
+
+    if (normalized <= 0 || POSSIBLE_PORT_AS_JID.has(normalized)) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  private toHumanReadableLabel(value: string | null, fallback: string): string {
+    const normalized = this.normalizeText(value);
+
+    if (!normalized || normalized === "0") {
+      return fallback;
+    }
+
+    return normalized;
+  }
+
+  private resolveServiceTypeByPort(port: number | null): string | null {
+    if (port === SERVICE_PORT_IEMK) {
+      return "ИЭМК";
+    }
+
+    if (port === SERVICE_PORT_REMD) {
+      return "РЭМД";
+    }
+
+    if (port === SERVICE_PORT_IGNORE) {
+      return null;
+    }
+
+    return null;
+  }
+
+  private parseClinicEndpoint(value: string | null): { hostname: string | null; port: number | null; jid: number | null } {
+    if (!value) {
+      return { hostname: null, port: null, jid: null };
+    }
+
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+      return { hostname: null, port: null, jid: null };
+    }
+
+    const withoutProtocol = trimmed
+      .replace(/^["'<(\[]+|[>"')\]]+$/g, "")
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+      .replace(/^\/\//, "");
+    const hostWithOptionalPort = withoutProtocol
+      .split(/[/?#\s;,]/, 1)[0]
+      ?.trim()
+      .replace(/\/+$/, "") ?? "";
+
+    if (!hostWithOptionalPort) {
+      return { hostname: null, port: null, jid: null };
+    }
+
+    const portMatch = hostWithOptionalPort.match(/:(\d+)$/);
+    const port = portMatch ? Number(portMatch[1]) : null;
+    const hostname = this.normalizeHostname(hostWithOptionalPort);
+
+    return {
+      hostname,
+      port: Number.isFinite(port) ? port : null,
+      jid: this.extractJid(hostname)
+    };
   }
 
   private buildServiceDescription(

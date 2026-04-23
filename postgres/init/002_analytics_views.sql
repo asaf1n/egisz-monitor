@@ -20,14 +20,41 @@ CREATE OR REPLACE VIEW public.v_unified_analytics AS
         dc.jid AS clinic_jid,
         dc.jname,
         dc.is_verified,
-        COALESCE(NULLIF(TRIM(dc.jname), ''), 'Клиника JID: ' || dc.jid::text) AS clinic_label,
-        COALESCE(NULLIF(TRIM(dc.jname), ''), 'Клиника JID: ' || dc.jid::text) AS clinic_display_name,
+        CASE
+          WHEN NULLIF(TRIM(dc.jname), '') IS NOT NULL THEN TRIM(dc.jname)
+          WHEN dc.jid IS NOT NULL AND dc.jid > 0 THEN 'Клиника JID: ' || dc.jid::text
+          ELSE 'JID клиники не определен, OID: ' || COALESCE(
+            CASE
+              WHEN NULLIF(TRIM(dc.mo_uid), '') ~ '^1\\.2\\.643\\.5\\.1\\.13\\.13\\.12\\.2\\.[0-9]+\\.[0-9]+$'
+                THEN NULLIF(TRIM(dc.mo_uid), '')
+              ELSE NULL
+            END,
+            '[OID не найден]'
+          )
+        END AS clinic_label,
+        CASE
+          WHEN NULLIF(TRIM(dc.jname), '') IS NOT NULL THEN TRIM(dc.jname)
+          WHEN dc.jid IS NOT NULL AND dc.jid > 0 THEN 'Клиника JID: ' || dc.jid::text
+          ELSE 'JID клиники не определен, OID: ' || COALESCE(
+            CASE
+              WHEN NULLIF(TRIM(dc.mo_uid), '') ~ '^1\\.2\\.643\\.5\\.1\\.13\\.13\\.12\\.2\\.[0-9]+\\.[0-9]+$'
+                THEN NULLIF(TRIM(dc.mo_uid), '')
+              ELSE NULL
+            END,
+            '[OID не найден]'
+          )
+        END AS clinic_display_name,
         dc.mo_uid,
         dc.mo_domen,
         ft.service_id,
         ds.kind AS service_kind,
         ds.kind AS document_kind,
         ds.service_type,
+        CASE
+          WHEN COALESCE(ft.reply_to, '') ~ ':(9921)(?:/|$)' THEN 'ИЭМК'
+          WHEN COALESCE(ft.reply_to, '') ~ ':(9901)(?:/|$)' THEN 'РЭМД'
+          ELSE NULL
+        END AS service_channel,
         ds.description AS service_description,
         
         CASE
@@ -655,4 +682,5 @@ CREATE OR REPLACE VIEW public.v_unified_analytics AS
             THEN 'validation'
           ELSE 'unknown'
         END
-      WHERE dc.mo_uid <> 'ghost-log-group-9901';
+      WHERE dc.mo_uid <> 'ghost-log-group-9901'
+        AND COALESCE(substring(COALESCE(ft.reply_to, '') FROM ':(\d+)(?:/|$)'), '') <> '9945';

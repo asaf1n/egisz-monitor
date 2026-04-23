@@ -10,7 +10,7 @@
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "WITH total AS (SELECT COUNT(DISTINCT dc.jid)::numeric AS total_registered FROM public.dim_clinics dc WHERE dc.jid IS NOT NULL AND dc.mo_uid <> 'ghost-log-group-9901'), active AS (SELECT COUNT(DISTINCT ua.jid)::numeric AS active_30d FROM public.v_unified_analytics ua WHERE ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]]) SELECT total.total_registered::bigint AS \"Всего клиник\", active.active_30d::bigint AS \"Активные клиники\", COALESCE(ROUND(100.0 * active.active_30d / NULLIF(total.total_registered, 0), 2), 0) AS \"Охват сервиса, %\" FROM total CROSS JOIN active;",
+          "query": "WITH total AS (SELECT COUNT(DISTINCT dc.jid)::numeric AS total_registered FROM public.dim_clinics dc WHERE dc.jid IS NOT NULL AND dc.mo_uid <> 'ghost-log-group-9901'), active AS (SELECT COUNT(DISTINCT ua.jid)::numeric AS active_30d FROM public.v_unified_analytics ua WHERE ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.transaction_date >= {{date_from}} ]] [[ AND ua.transaction_date < {{date_to}} ]] [[ AND (({{fixed_period}} = '7d' AND ua.transaction_date >= NOW() - INTERVAL '7 days') OR ({{fixed_period}} = '30d' AND ua.transaction_date >= NOW() - INTERVAL '30 days')) ]] [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]]) SELECT total.total_registered::bigint AS \"Всего клиник\", active.active_30d::bigint AS \"Активные клиники\", COALESCE(ROUND(100.0 * active.active_30d / NULLIF(total.total_registered, 0), 2), 0) AS \"Охват сервиса, %\" FROM total CROSS JOIN active;",
           "template-tags": {
             "clinic_jid": {
               "id": "clinic_jid",
@@ -23,6 +23,27 @@
               "id": "organization_oid",
               "name": "organization_oid",
               "display-name": "Organization OID (Federal)",
+              "type": "text",
+              "required": false
+            },
+            "date_from": {
+              "id": "date_from",
+              "name": "date_from",
+              "display-name": "Дата с",
+              "type": "date",
+              "required": false
+            },
+            "date_to": {
+              "id": "date_to",
+              "name": "date_to",
+              "display-name": "Дата по",
+              "type": "date",
+              "required": false
+            },
+            "fixed_period": {
+              "id": "fixed_period",
+              "name": "fixed_period",
+              "display-name": "Фиксированный период",
               "type": "text",
               "required": false
             }
@@ -76,7 +97,7 @@
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_kind), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"Тип СЭМД\", COUNT(*)::bigint AS \"Всего\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\", COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0), 2), 0) AS \"Успешность, %\" FROM public.v_unified_analytics ua WHERE ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY 1 ORDER BY \"Успешность, %\" ASC, \"Всего\" DESC;",
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_kind), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"Тип СЭМД\", COUNT(*)::bigint AS \"Всего\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\", COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0), 2), 0) AS \"Успешность, %\" FROM public.v_unified_analytics ua WHERE ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.transaction_date >= {{date_from}} ]] [[ AND ua.transaction_date < {{date_to}} ]] [[ AND (({{fixed_period}} = '7d' AND ua.transaction_date >= NOW() - INTERVAL '7 days') OR ({{fixed_period}} = '30d' AND ua.transaction_date >= NOW() - INTERVAL '30 days')) ]] [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY 1 ORDER BY \"Успешность, %\" ASC, \"Всего\" DESC;",
           "template-tags": {
             "clinic_jid": {
               "id": "clinic_jid",
@@ -89,6 +110,27 @@
               "id": "organization_oid",
               "name": "organization_oid",
               "display-name": "Organization OID (Federal)",
+              "type": "text",
+              "required": false
+            },
+            "date_from": {
+              "id": "date_from",
+              "name": "date_from",
+              "display-name": "Дата с",
+              "type": "date",
+              "required": false
+            },
+            "date_to": {
+              "id": "date_to",
+              "name": "date_to",
+              "display-name": "Дата по",
+              "type": "date",
+              "required": false
+            },
+            "fixed_period": {
+              "id": "fixed_period",
+              "name": "fixed_period",
+              "display-name": "Фиксированный период",
               "type": "text",
               "required": false
             }
@@ -147,7 +189,7 @@
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT ua.clinic_label AS \"Клиника\", COUNT(*)::bigint AS \"Транзакции\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.clinic_jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY ua.clinic_label ORDER BY \"Транзакции\" DESC, ua.clinic_label ASC LIMIT 30;",
+          "query": "SELECT ua.clinic_label AS \"Клиника\", COUNT(*)::bigint AS \"Транзакции\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.clinic_jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.transaction_date >= {{date_from}} ]] [[ AND ua.transaction_date < {{date_to}} ]] [[ AND (({{fixed_period}} = '7d' AND ua.transaction_date >= NOW() - INTERVAL '7 days') OR ({{fixed_period}} = '30d' AND ua.transaction_date >= NOW() - INTERVAL '30 days')) ]] [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] GROUP BY ua.clinic_label ORDER BY \"Транзакции\" DESC, ua.clinic_label ASC LIMIT 30;",
           "template-tags": {
             "clinic_jid": {
               "id": "clinic_jid",
@@ -160,6 +202,27 @@
               "id": "organization_oid",
               "name": "organization_oid",
               "display-name": "Organization OID (Federal)",
+              "type": "text",
+              "required": false
+            },
+            "date_from": {
+              "id": "date_from",
+              "name": "date_from",
+              "display-name": "Дата с",
+              "type": "date",
+              "required": false
+            },
+            "date_to": {
+              "id": "date_to",
+              "name": "date_to",
+              "display-name": "Дата по",
+              "type": "date",
+              "required": false
+            },
+            "fixed_period": {
+              "id": "fixed_period",
+              "name": "fixed_period",
+              "display-name": "Фиксированный период",
               "type": "text",
               "required": false
             }
@@ -223,6 +286,24 @@
       "id": "organization_oid_filter",
       "name": "Organization OID (Federal)",
       "slug": "organization_oid_filter",
+      "type": "text"
+    },
+    {
+      "id": "date_from_filter",
+      "name": "Дата с",
+      "slug": "date_from_filter",
+      "type": "date"
+    },
+    {
+      "id": "date_to_filter",
+      "name": "Дата по",
+      "slug": "date_to_filter",
+      "type": "date"
+    },
+    {
+      "id": "fixed_period_filter",
+      "name": "Период (7/30 дней)",
+      "slug": "fixed_period_filter",
       "type": "text"
     }
   ]

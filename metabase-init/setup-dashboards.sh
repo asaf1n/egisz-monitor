@@ -9,7 +9,7 @@ DB_USER="${DB_USER:-egisz}"
 DB_PASSWORD="${DB_PASSWORD:-egisz}"
 DB_DISPLAY_NAME="${DB_DISPLAY_NAME:-EGISZ Reports}"
 
-ROOT_COLLECTION_NAME="EGISZ Мониторинг"
+ROOT_COLLECTION_NAME="EGISZ Monitoring"
 
 log_info() {
   echo "[dashboards] $1" >&2
@@ -242,7 +242,16 @@ create_card() {
   local template_tags="$(echo "$parsed_json" | jq -c '.dataset_query.native["template-tags"] // {}')"
   local table_ref="$(echo "$parsed_json" | jq -r '.table_ref // empty')"
   local table_id=""
-  local visualization_settings="$(echo "$parsed_json" | jq -c '.visualization_settings // {}')"
+  local visualization_settings="$(echo "$parsed_json" | jq -c '
+    (.visualization_settings // {}) as $vs
+    | $vs
+    | .table = (.table // {})
+    | .table.columns = ((.table.columns // {}) + {
+        "[\"name\",\"clinic_id\"]": { "display_as": null },
+        "[\"name\",\"service_id\"]": { "display_as": null },
+        "[\"name\",\"transaction_id\"]": { "display_as": null }
+      })
+  ')"
 
   if [ -n "${table_ref}" ]; then
     table_id="$(resolve_table_id "${table_ref}")"
@@ -310,13 +319,16 @@ create_dashboard() {
       mappings="$(echo "$parsed_json" | jq -c --argjson cardIndex "$i" '
         (.cards[$cardIndex].dataset_query.native["template-tags"] // {} | keys) as $cardTags
         | [
-            (.parameters // [])[]
-            | if .slug == "clinic_jid_filter" and (($cardTags | index("clinic_jid")) != null) then
-                { parameter_id: .id, target: ["variable", ["template-tag", "clinic_jid"]] }
-              elif .slug == "organization_oid_filter" and (($cardTags | index("organization_oid")) != null) then
-                { parameter_id: .id, target: ["variable", ["template-tag", "organization_oid"]] }
-              elif .slug == "local_uid_filter" and (($cardTags | index("local_uid")) != null) then
-                { parameter_id: .id, target: ["variable", ["template-tag", "local_uid"]] }
+            (.parameters // [])[] as $param
+            | (
+                if ($param.slug | endswith("_filter")) then
+                  ($param.slug | sub("_filter$"; ""))
+                else
+                  $param.slug
+                end
+              ) as $tagName
+            | if (($cardTags | index($tagName)) != null) then
+                { parameter_id: $param.id, target: ["variable", ["template-tag", $tagName]] }
               else
                 empty
               end
@@ -377,7 +389,7 @@ done
 authenticate
 APP_DB_ID="$(ensure_app_database)"
 
-ROOT_COLLECTION_ID="$(create_collection "${ROOT_COLLECTION_NAME}" "Коллекция дашбордов EGISZ" "#509EE3")"
+ROOT_COLLECTION_ID="$(create_collection "${ROOT_COLLECTION_NAME}" "EGISZ dashboards collection" "#509EE3")"
 
 for dashboard_file in /app/metabase_dashboards/*.json; do
   if [ -f "$dashboard_file" ]; then
