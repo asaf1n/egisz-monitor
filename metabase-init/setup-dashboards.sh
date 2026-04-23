@@ -308,19 +308,19 @@ create_dashboard() {
       
       local mappings
       mappings="$(echo "$parsed_json" | jq -c --argjson cardIndex "$i" '
-        (.parameters // [] | map(
-          if .slug == "clinic_jid_filter" then
-            { parameter_id: .id, target: ["variable", ["template-tag", "clinic_jid"]] }
-          elif .slug == "organization_oid_filter" then
-            { parameter_id: .id, target: ["variable", ["template-tag", "organization_oid"]] }
-          elif .slug == "local_uid_filter" then
-            { parameter_id: .id, target: ["variable", ["template-tag", "local_uid"]] }
-          else
-            empty
-          end
-        )) as $candidateMappings
-        | (.cards[$cardIndex].dataset_query.native["template-tags"] // {} | keys) as $cardTags
-        | [ $candidateMappings[] | select(($cardTags | index(.target[1][1])) != null) ]
+        (.cards[$cardIndex].dataset_query.native["template-tags"] // {} | keys) as $cardTags
+        | [
+            (.parameters // [])[]
+            | if .slug == "clinic_jid_filter" and (($cardTags | index("clinic_jid")) != null) then
+                { parameter_id: .id, target: ["variable", ["template-tag", "clinic_jid"]] }
+              elif .slug == "organization_oid_filter" and (($cardTags | index("organization_oid")) != null) then
+                { parameter_id: .id, target: ["variable", ["template-tag", "organization_oid"]] }
+              elif .slug == "local_uid_filter" and (($cardTags | index("local_uid")) != null) then
+                { parameter_id: .id, target: ["variable", ["template-tag", "local_uid"]] }
+              else
+                empty
+              end
+          ]
       ')"
       
       local dashcard="$(jq -n \

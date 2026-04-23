@@ -1,16 +1,16 @@
 {
-  "name": "Технический анализ",
-  "description": "Технический мониторинг EGISZ: матрица ошибок, heatmap доступности и топ структурированных инцидентов.",
+  "name": "Анализ ошибок",
+  "description": "Технический и поддерживающий контур: ошибки по типам документов, Heatmap доступности и повторяющиеся инциденты.",
   "collection_id": null,
   "cards": [
     {
-      "name": "Матрица ошибок",
-      "description": "Pivot-матрица KIND x error_category за 30 дней.",
+      "name": "Матрица: тип документа vs ошибка",
+      "description": "Сводная матрица по типам документов и категориям ошибок за 30 дней.",
       "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_kind), ''), NULLIF(TRIM(ua.service_kind), ''), 'N/A') AS \"KIND\", COALESCE(NULLIF(TRIM(ua.error_category), ''), 'Other errors') AS \"Error Category\", COUNT(*)::bigint AS \"Count\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1, 2 ORDER BY 1 ASC, 3 DESC;",
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_kind), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"Тип документа\", COALESCE(NULLIF(TRIM(ua.error_category), ''), 'Прочие ошибки') AS \"Ошибка\", COUNT(*)::bigint AS \"Количество\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1, 2 ORDER BY 1 ASC, 3 DESC;",
           "template-tags": {
             "clinic_jid": {
               "id": "clinic_jid",
@@ -39,7 +39,7 @@
       },
       "display": "table",
       "visualization_settings": {
-        "table.pivot_column": "Категория ошибки",
+        "table.pivot_column": "Ошибка",
         "table.cell_column": "Количество",
         "column_settings": {
           "[\"name\",\"clinic_id\"]": {
@@ -79,12 +79,12 @@
     },
     {
       "name": "Heatmap доступности",
-      "description": "Почасовая плотность ошибок по клиникам за 7 дней.",
+      "description": "Почасовая плотность ошибок связи по клиникам за 7 дней.",
       "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT date_trunc('hour', ua.transaction_date) AS \"Hour\", ua.clinic_label AS \"Clinic\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Errors\" FROM public.v_unified_analytics ua WHERE ua.clinic_jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '7 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1, 2 ORDER BY 1 ASC, 2 ASC;",
+          "query": "SELECT date_trunc('hour', ua.transaction_date) AS \"Hour\", ua.clinic_label AS \"Клиника\", COUNT(*)::bigint AS \"Ошибка связи\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.clinic_jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '7 days' AND (ua.error_category = 'Ошибка связи' OR ua.error_subcategory IN ('timeout', 'connection_refused', 'proxy')) [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1, 2 ORDER BY 1 ASC, 2 ASC;",
           "template-tags": {
             "clinic_jid": {
               "id": "clinic_jid",
@@ -114,11 +114,11 @@
       "display": "heatmap",
       "visualization_settings": {
         "graph.dimensions": [
-          "Час",
+          "Hour",
           "Клиника"
         ],
         "graph.metrics": [
-          "Ошибки"
+          "Ошибка связи"
         ],
         "column_settings": {
           "[\"name\",\"clinic_id\"]": {
@@ -157,13 +157,13 @@
       "col": 12
     },
     {
-      "name": "Топ-20 ошибок ЕГИЗС",
-      "description": "Таблица ошибок по структурированным полям error_code и error_message.",
+      "name": "Топ-20 ошибок ЕГИСЗ",
+      "description": "Таблица ошибок по структурированным полям кода и сообщения ошибки.",
       "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT ua.clinic_label AS \"clinic_label\", COALESCE(NULLIF(TRIM(ua.error_code), ''), '[no_code]') AS \"error_code\", COALESCE(NULLIF(TRIM(ua.error_message), ''), '[no_message]') AS \"error_message\", COUNT(*)::bigint AS \"count\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY ua.clinic_label, COALESCE(NULLIF(TRIM(ua.error_code), ''), '[no_code]'), COALESCE(NULLIF(TRIM(ua.error_message), ''), '[no_message]') ORDER BY \"count\" DESC, \"clinic_label\" ASC LIMIT 20;",
+          "query": "SELECT ua.clinic_label AS \"Клиника\", COALESCE(NULLIF(TRIM(ua.error_code), ''), '[без кода]') AS \"Код ошибки\", COALESCE(NULLIF(TRIM(ua.error_message), ''), '[без сообщения]') AS \"Сообщение ошибки\", COUNT(*)::bigint AS \"Количество\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY ua.clinic_label, COALESCE(NULLIF(TRIM(ua.error_code), ''), '[без кода]'), COALESCE(NULLIF(TRIM(ua.error_message), ''), '[без сообщения]') ORDER BY \"Количество\" DESC, \"Клиника\" ASC LIMIT 20;",
           "template-tags": {
             "clinic_jid": {
               "id": "clinic_jid",
@@ -229,13 +229,13 @@
       "col": 0
     },
     {
-      "name": "Clinic Accessibility by reply_to",
-      "description": "Network incidents grouped by external clinic address.",
+      "name": "Доступность по reply_to",
+      "description": "Сетевые инциденты, сгруппированные по внешнему адресу медицинской организации.",
       "table_ref": "v_unified_analytics",
       "dataset_query": {
         "type": "native",
         "native": {
-          "query": "SELECT COALESCE(NULLIF(TRIM(ua.reply_to), ''), '[no_reply_to]') AS \"reply_to\", COUNT(*)::bigint AS \"Incidents\", COUNT(DISTINCT ua.clinic_jid)::bigint AS \"Clinics\", MAX(ua.transaction_date) AS \"Last incident\" FROM public.v_unified_analytics ua WHERE ua.is_error AND (ua.error_category = 'Infrastructure' OR ua.error_subcategory IN ('timeout', 'connection_refused', 'proxy')) AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1 ORDER BY \"Incidents\" DESC, \"reply_to\" ASC LIMIT 50;",
+          "query": "SELECT COALESCE(NULLIF(TRIM(ua.reply_to), ''), '[без reply_to]') AS \"reply_to\", COUNT(*)::bigint AS \"Инциденты\", COUNT(DISTINCT ua.clinic_jid)::bigint AS \"Клиники\", MAX(ua.transaction_date) AS \"Последний инцидент\" FROM public.v_unified_analytics ua WHERE ua.is_error AND (ua.error_category = 'Ошибка связи' OR ua.error_subcategory IN ('timeout', 'connection_refused', 'proxy')) AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] [[ AND ua.mo_uid = {{organization_oid}} ]] [[ AND ua.local_uid ILIKE CONCAT('%', {{local_uid}}, '%') ]] GROUP BY 1 ORDER BY \"Инциденты\" DESC, \"reply_to\" ASC LIMIT 50;",
           "template-tags": {
             "clinic_jid": {
               "id": "clinic_jid",

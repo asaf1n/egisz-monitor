@@ -201,3 +201,11 @@ ormalizeJoinQuery() now auto-falls back to default query when legacy non-existen
 - Encoding hardening: fixed mojibake-prone clinic label literals in backend clinic upsert/migration logic (`Неизвестная клиника`, `Не сопоставлено (нет JID)`), so newly written labels are UTF-8 clean.
 - Data repair on startup: added migration updates in `migrateClinicDirectory()` to rewrite already persisted mojibake clinic names to readable UTF-8 labels.
 - Backward normalization preserved: error category cleanup now recognizes both clean Cyrillic and historical mojibake aliases for `Сетевая` and `Асинхронная`.
+
+## v1.8.3 (2026-04-23)
+
+- Metabase dashboards rebuilt with Russian-facing naming: main dashboard is now `Дашборд сервиса интеграции`, business error dashboard is `Анализ ошибок`, and supporting dashboards keep Russian titles while preserving stable identifiers like `JID`, `OID`, `KIND`, `reply_to`, `LocalUID`, and `Heatmap`.
+- Main dashboard semantics updated: card `Охват сервиса` now targets active-clinic coverage over total registered `JID`, and `Успешность по типам СЭМД` is shown as success-rate percentage by `KIND`.
+- Error analytics semantics aligned with runtime `v_unified_analytics`: network-focused cards now filter by `Ошибка связи` and technical subcategories (`timeout`, `connection_refused`, `proxy`) instead of legacy `Infrastructure`.
+- Provisioning hardening: `metabase-init/setup-dashboards.sh` filter mapping logic was fixed so all dashboard JSON files can be imported in one pass without jq parameter-mapping failure.
+- Full reset executed: Docker stack was brought down with volumes removed, PostgreSQL was recreated from scratch, Metabase metadata was rebuilt, and application warehouse tables restarted empty for a clean next synchronization.
