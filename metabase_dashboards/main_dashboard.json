@@ -1,65 +1,100 @@
 {
-  "name": "Бизнес-мониторинг",
-  "description": "Управленческий и продуктовый мониторинг сервиса EGISZ: проникновение, успешность по типам документов и динамика по ЮЛ.",
-  "collection_id": null,
-  "cards": [
-    {
-      "name": "Проникновение сервиса",
-      "description": "Доля активных клиник за 30 дней от общего количества зарегистрированных JID.",
-      "dataset_query": {
-        "type": "native",
-        "native": {
-          "query": "WITH total AS (SELECT COUNT(DISTINCT dc.jid)::bigint AS total_registered FROM public.dim_clinics dc WHERE dc.jid IS NOT NULL AND dc.mo_uid <> 'ghost-log-group-9901'), active AS (SELECT COUNT(DISTINCT ua.jid)::bigint AS active_30d FROM public.v_unified_analytics ua WHERE ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days') SELECT total.total_registered AS \"Всего зарегистрированных клиник\", active.active_30d AS \"Активные клиники (30д)\", COALESCE(ROUND(100.0 * active.active_30d / NULLIF(total.total_registered, 0), 2), 0) AS \"Проникновение сервиса, %\" FROM total CROSS JOIN active;"
-        },
-        "database": 1
-      },
-      "display": "table",
-      "visualization_settings": {},
-      "sizeX": 8,
-      "sizeY": 3,
-      "row": 0,
-      "col": 0
-    },
-    {
-      "name": "Успешность по типам документов",
-      "description": "Распределение Success/Error по кодам KIND за 30 дней.",
-      "dataset_query": {
-        "type": "native",
-        "native": {
-          "query": "SELECT COALESCE(NULLIF(TRIM(ua.document_type), ''), NULLIF(TRIM(ua.service_kind), ''), 'Не указан') AS \"KIND\", COUNT(*)::bigint AS \"Всего\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\", COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0), 2), 0) AS \"Успешность, %\", COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE ua.is_error) / NULLIF(COUNT(*), 0), 2), 0) AS \"Ошибки, %\" FROM public.v_unified_analytics ua WHERE ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY \"Всего\" DESC;"
-        },
-        "database": 1
-      },
-      "display": "bar",
-      "visualization_settings": {
-        "graph.dimensions": ["KIND"],
-        "graph.metrics": ["Успешно", "Ошибки"]
-      },
-      "sizeX": 16,
-      "sizeY": 3,
-      "row": 0,
-      "col": 8
-    },
-    {
-      "name": "Динамика по ЮЛ",
-      "description": "Топ активных клиник по объему транзакций за последние 30 дней.",
-      "dataset_query": {
-        "type": "native",
-        "native": {
-          "query": "SELECT ua.jid AS \"JID\", ua.clinic_display_name AS \"Клиника\", COUNT(*)::bigint AS \"Транзакций\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY ua.jid, ua.clinic_display_name ORDER BY \"Транзакций\" DESC, ua.clinic_display_name ASC LIMIT 30;"
-        },
-        "database": 1
-      },
-      "display": "bar",
-      "visualization_settings": {
-        "graph.dimensions": ["Клиника"],
-        "graph.metrics": ["Транзакций"]
-      },
-      "sizeX": 24,
-      "sizeY": 5,
-      "row": 3,
-      "col": 0
-    }
-  ],
-  "parameters": []
+    "name":  "Бизнес-мониторинг",
+    "description":  "Управленческий и продуктовый мониторинг сервиса EGISZ: проникновение, успешность по типам документов и динамика по ЮЛ.",
+    "collection_id":  null,
+    "cards":  [
+                  {
+                      "name":  "Проникновение сервиса",
+                      "description":  "Доля активных клиник за 30 дней от общего количества зарегистрированных JID.",
+                      "dataset_query":  {
+                                            "type":  "native",
+                                            "native":  {
+                                                           "query":  "WITH total AS (SELECT COUNT(DISTINCT dc.jid)::bigint AS total_registered FROM public.dim_clinics dc WHERE dc.jid IS NOT NULL AND dc.mo_uid \u003c\u003e \u0027ghost-log-group-9901\u0027), active AS (SELECT COUNT(DISTINCT ua.jid)::bigint AS active_30d FROM public.v_unified_analytics ua WHERE ua.jid IS NOT NULL AND ua.transaction_date \u003e= NOW() - INTERVAL \u002730 days\u0027) SELECT total.total_registered AS \"Всего зарегистрированных клиник\", active.active_30d AS \"Активные клиники (30д)\", COALESCE(ROUND(100.0 * active.active_30d / NULLIF(total.total_registered, 0), 2), 0) AS \"Проникновение сервиса, %\" FROM total CROSS JOIN active;"
+                                                       },
+                                            "database":  1
+                                        },
+                      "display":  "table",
+                      "visualization_settings":  {
+
+                                                 },
+                      "sizeX":  8,
+                      "sizeY":  3,
+                      "row":  0,
+                      "col":  0
+                  },
+                  {
+                      "name":  "Успешность по типам документов",
+                      "description":  "Распределение Success/Error по кодам KIND за 30 дней.",
+                      "dataset_query":  {
+                                            "type":  "native",
+                                            "native":  {
+                                                           "query":  "SELECT COALESCE(NULLIF(TRIM(ua.document_type), \u0027\u0027), NULLIF(TRIM(ua.service_kind), \u0027\u0027), \u0027Не указан\u0027) AS \"KIND\", COUNT(*)::bigint AS \"Всего\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\", COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE ua.is_success) / NULLIF(COUNT(*), 0), 2), 0) AS \"Успешность, %\", COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE ua.is_error) / NULLIF(COUNT(*), 0), 2), 0) AS \"Ошибки, %\" FROM public.v_unified_analytics ua WHERE ua.transaction_date \u003e= NOW() - INTERVAL \u002730 days\u0027 GROUP BY 1 ORDER BY \"Всего\" DESC;"
+                                                       },
+                                            "database":  1
+                                        },
+                      "display":  "bar",
+                      "visualization_settings":  {
+                                                     "graph.dimensions":  [
+                                                                              "KIND"
+                                                                          ],
+                                                     "graph.metrics":  [
+                                                                           "Успешно",
+                                                                           "Ошибки"
+                                                                       ]
+                                                 },
+                      "sizeX":  16,
+                      "sizeY":  3,
+                      "row":  0,
+                      "col":  8
+                  },
+                  {
+                      "name":  "Динамика по ЮЛ",
+                      "description":  "Топ активных клиник по объему транзакций за последние 30 дней.",
+                      "dataset_query":  {
+                                            "type":  "native",
+                                            "native":  {
+                                                           "query":  "SELECT ua.clinic_label AS \"Клиника\", COUNT(*)::bigint AS \"Транзакций\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.clinic_jid IS NOT NULL AND ua.transaction_date \u003e= NOW() - INTERVAL \u002730 days\u0027 [[ AND ua.clinic_jid = {{clinic_jid}} ]] GROUP BY ua.clinic_label ORDER BY \"Транзакций\" DESC, ua.clinic_label ASC LIMIT 30;",
+                                                           "template-tags":  {
+                                                                                 "clinic_jid":  {
+                                                                                                    "id":  "clinic_jid",
+                                                                                                    "name":  "clinic_jid",
+                                                                                                    "display-name":  "JID клиники",
+                                                                                                    "type":  "number",
+                                                                                                    "required":  false
+                                                                                                }
+                                                                             }
+                                                       },
+                                            "database":  1
+                                        },
+                      "display":  "bar",
+                      "visualization_settings":  {
+                                                     "graph.dimensions":  [
+                                                                              "Клиника"
+                                                                          ],
+                                                     "graph.metrics":  [
+                                                                           "Транзакций"
+                                                                       ],
+                                                     "column_settings":  {
+                                                                             "[\"name\",\"clinic_id\"]":  {
+                                                                                                              "display_as":  null
+                                                                                                          },
+                                                                             "[\"name\",\"clinic_jid\"]":  {
+                                                                                                               "display_as":  null
+                                                                                                           }
+                                                                         }
+                                                 },
+                      "sizeX":  24,
+                      "sizeY":  5,
+                      "row":  3,
+                      "col":  0
+                  }
+              ],
+    "parameters":  [
+                       {
+                           "id":  "clinic_jid_filter",
+                           "name":  "JID клиники",
+                           "slug":  "clinic_jid_filter",
+                           "type":  "number"
+                       }
+                   ]
 }

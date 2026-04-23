@@ -18,15 +18,8 @@ SELECT
     dc.jid AS clinic_jid,
     dc.jname,
     dc.is_verified,
-    COALESCE(
-        NULLIF(TRIM(dc.jname), ''),
-        CASE
-            WHEN dc.jid IS NOT NULL AND dc.jid <> 0 THEN 'Клиника JID: ' || dc.jid::text
-            ELSE NULL
-        END,
-        NULLIF(TRIM(ee.hostname), ''),
-        'Неизвестная клиника'
-    ) AS clinic_display_name,
+    COALESCE(dc.jname, 'JID: ' || ft.clinic_id::text) AS clinic_label,
+    COALESCE(dc.jname, 'JID: ' || ft.clinic_id::text) AS clinic_display_name,
     dc.mo_uid,
     dc.mo_domen,
     ft.service_id,

@@ -193,6 +193,7 @@ create_card() {
   local collection_id="$3"
   local query="$4"
   local display="$5"
+  local template_tags="${6:-{}}"
   local payload
 
   payload="$(jq -n \
@@ -200,6 +201,7 @@ create_card() {
     --arg description "${description}" \
     --arg query "${query}" \
     --arg display "${display}" \
+    --argjson templateTags "${template_tags}" \
     --argjson collectionId "${collection_id}" \
     --argjson databaseId "${APP_DB_ID}" \
     '{
@@ -208,7 +210,10 @@ create_card() {
       collection_id: $collectionId,
       dataset_query: {
         type: "native",
-        native: { query: $query },
+        native: {
+          query: $query,
+          "template-tags": $templateTags
+        },
         database: $databaseId
       },
       display: $display,
@@ -223,6 +228,7 @@ create_dashboard() {
   local description="$2"
   local collection_id="$3"
   local dashcards_json="$4"
+  local parameters_json="${5:-[]}"
   local payload
 
   payload="$(jq -n \
@@ -230,12 +236,14 @@ create_dashboard() {
     --arg description "${description}" \
     --argjson collectionId "${collection_id}" \
     --argjson dashcards "${dashcards_json}" \
+    --argjson parameters "${parameters_json}" \
     '{
       name: $name,
       description: $description,
       collection_id: $collectionId,
       cacheables: [],
-      dashcards: $dashcards
+      dashcards: $dashcards,
+      parameters: $parameters
     }')"
 
   api_request POST "/api/dashboard" "${payload}" | jq -r '.id'
@@ -278,8 +286,9 @@ TOP_CLINICS_ID="$(create_card \
   "Динамика по ЮЛ" \
   "Топ-активные клиники по объему транзакций за 30 дней" \
   "${BUSINESS_COLLECTION_ID}" \
-  "SELECT ua.jid AS \"JID\", ua.clinic_display_name AS \"Клиника\", COUNT(*)::bigint AS \"Транзакций\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY ua.jid, ua.clinic_display_name ORDER BY \"Транзакций\" DESC, ua.clinic_display_name ASC LIMIT 30;" \
-  "bar")"
+  "SELECT ua.clinic_label AS \"Клиника\", COUNT(*)::bigint AS \"Транзакций\", COUNT(*) FILTER (WHERE ua.is_success)::bigint AS \"Успешно\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.clinic_jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] GROUP BY ua.clinic_label ORDER BY \"Транзакций\" DESC, ua.clinic_label ASC LIMIT 30;" \
+  "bar" \
+  "{\"clinic_jid\":{\"id\":\"clinic_jid\",\"name\":\"clinic_jid\",\"display-name\":\"JID клиники\",\"type\":\"number\",\"required\":false}}")"
 
 ERROR_MATRIX_ID="$(create_card \
   "Матрица ошибок" \
@@ -292,27 +301,31 @@ AVAIL_HEATMAP_ID="$(create_card \
   "Heatmap доступности" \
   "Плотность ошибок по JID в почасовом разрезе" \
   "${TECH_COLLECTION_ID}" \
-  "SELECT date_trunc('hour', ua.transaction_date) AS \"Час\", ua.jid AS \"JID\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '7 days' GROUP BY 1, 2 ORDER BY 1 ASC, 2 ASC;" \
-  "heatmap")"
+  "SELECT date_trunc('hour', ua.transaction_date) AS \"Час\", ua.clinic_label AS \"Клиника\", COUNT(*) FILTER (WHERE ua.is_error)::bigint AS \"Ошибки\" FROM public.v_unified_analytics ua WHERE ua.clinic_jid IS NOT NULL AND ua.transaction_date >= NOW() - INTERVAL '7 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] GROUP BY 1, 2 ORDER BY 1 ASC, 2 ASC;" \
+  "heatmap" \
+  "{\"clinic_jid\":{\"id\":\"clinic_jid\",\"name\":\"clinic_jid\",\"display-name\":\"JID клиники\",\"type\":\"number\",\"required\":false}}")"
 
 TOP_CRITICAL_ID="$(create_card \
-  "Топ критических ошибок" \
-  "Нормализованные ошибки (clean_error_text) с максимальной частотой" \
+  "Топ-20 ошибок ЕГИЗС" \
+  "Структурированные ошибки по полям error_code и error_message." \
   "${TECH_COLLECTION_ID}" \
-  "SELECT COALESCE(NULLIF(TRIM(ua.clean_error_text), ''), '[пусто]') AS \"Нормализованный текст\", COALESCE(NULLIF(TRIM(ua.error_category), ''), 'Прочие ошибки') AS \"Категория\", COUNT(*)::bigint AS \"Частота\", COUNT(DISTINCT ua.jid)::bigint AS \"Клиник\", MAX(ua.transaction_date) AS \"Последний инцидент\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' GROUP BY 1, 2 ORDER BY \"Частота\" DESC, 1 ASC LIMIT 50;" \
-  "table")"
+  "SELECT ua.clinic_label AS \"clinic_label\", COALESCE(NULLIF(TRIM(ua.error_code), ''), '[no_code]') AS \"error_code\", COALESCE(NULLIF(TRIM(ua.error_message), ''), '[no_message]') AS \"error_message\", COUNT(*)::bigint AS \"count\" FROM public.v_unified_analytics ua WHERE ua.is_error AND ua.transaction_date >= NOW() - INTERVAL '30 days' [[ AND ua.clinic_jid = {{clinic_jid}} ]] GROUP BY ua.clinic_label, COALESCE(NULLIF(TRIM(ua.error_code), ''), '[no_code]'), COALESCE(NULLIF(TRIM(ua.error_message), ''), '[no_message]') ORDER BY \"count\" DESC, \"clinic_label\" ASC LIMIT 20;" \
+  "table" \
+  "{\"clinic_jid\":{\"id\":\"clinic_jid\",\"name\":\"clinic_jid\",\"display-name\":\"JID клиники\",\"type\":\"number\",\"required\":false}}")"
 
 BUSINESS_DASHBOARD_ID="$(create_dashboard \
   "${BUSINESS_DASHBOARD_NAME}" \
   "Управленческий и продуктовый контур мониторинга" \
   "${BUSINESS_COLLECTION_ID}" \
-  "[{\"card_id\": ${SERVICE_PENETRATION_ID}, \"sizeX\": 8, \"sizeY\": 3, \"row\": 0, \"col\": 0}, {\"card_id\": ${DOC_SUCCESS_ID}, \"sizeX\": 16, \"sizeY\": 3, \"row\": 0, \"col\": 8}, {\"card_id\": ${TOP_CLINICS_ID}, \"sizeX\": 24, \"sizeY\": 5, \"row\": 3, \"col\": 0}]")"
+  "[{\"card_id\": ${SERVICE_PENETRATION_ID}, \"sizeX\": 8, \"sizeY\": 3, \"row\": 0, \"col\": 0}, {\"card_id\": ${DOC_SUCCESS_ID}, \"sizeX\": 16, \"sizeY\": 3, \"row\": 0, \"col\": 8}, {\"card_id\": ${TOP_CLINICS_ID}, \"sizeX\": 24, \"sizeY\": 5, \"row\": 3, \"col\": 0, \"parameter_mappings\":[{\"parameter_id\":\"clinic_jid_filter\",\"target\":[\"variable\",[\"template-tag\",\"clinic_jid\"]]}]}]" \
+  "[{\"id\":\"clinic_jid_filter\",\"name\":\"JID клиники\",\"slug\":\"clinic_jid_filter\",\"type\":\"number\"}]")"
 
 TECH_DASHBOARD_ID="$(create_dashboard \
   "${TECH_DASHBOARD_NAME}" \
   "Технический контур мониторинга и диагностики" \
   "${TECH_COLLECTION_ID}" \
-  "[{\"card_id\": ${ERROR_MATRIX_ID}, \"sizeX\": 12, \"sizeY\": 4, \"row\": 0, \"col\": 0}, {\"card_id\": ${AVAIL_HEATMAP_ID}, \"sizeX\": 12, \"sizeY\": 4, \"row\": 0, \"col\": 12}, {\"card_id\": ${TOP_CRITICAL_ID}, \"sizeX\": 24, \"sizeY\": 5, \"row\": 4, \"col\": 0}]")"
+  "[{\"card_id\": ${ERROR_MATRIX_ID}, \"sizeX\": 12, \"sizeY\": 4, \"row\": 0, \"col\": 0}, {\"card_id\": ${AVAIL_HEATMAP_ID}, \"sizeX\": 12, \"sizeY\": 4, \"row\": 0, \"col\": 12, \"parameter_mappings\":[{\"parameter_id\":\"clinic_jid_filter\",\"target\":[\"variable\",[\"template-tag\",\"clinic_jid\"]]}]}, {\"card_id\": ${TOP_CRITICAL_ID}, \"sizeX\": 24, \"sizeY\": 5, \"row\": 4, \"col\": 0, \"parameter_mappings\":[{\"parameter_id\":\"clinic_jid_filter\",\"target\":[\"variable\",[\"template-tag\",\"clinic_jid\"]]}]}]" \
+  "[{\"id\":\"clinic_jid_filter\",\"name\":\"JID клиники\",\"slug\":\"clinic_jid_filter\",\"type\":\"number\"}]")"
 
 log_info "Database: ${APP_DB_ID}"
 log_info "Root collection: ${ROOT_COLLECTION_ID}"

@@ -141,3 +141,11 @@ ormalizeJoinQuery() now auto-falls back to default query when legacy non-existen
 - Historical data safety: backfill now assigns any remaining egisz_errors rows with NULL clinic_id to dedicated unresolved-jid-bucket clinic before NOT NULL enforcement.
 - Constraint hardening: this ensures schema migration can keep egisz_errors.clinic_id mandatory without dropping unresolved rows.
 
+
+## v1.6 (2026-04-23)
+
+- Clinic identity clarified: JID remains the internal client identifier, while `mo_uid` remains the EGISZ organization registration identifier (OID, NSI 1.2.643.5.1.13.13.11.1461); direct `mo_uid <- JID` dependency is explicitly avoided.
+- Analytics view update: `v_unified_analytics` now exposes `clinic_label` as `COALESCE(jname, 'JID: ' || clinic_id)` and keeps explicit `clinic_jid` (`dim_clinics.jid`) for filtering.
+- Dynamics/clinic visuals: dashboard queries switched to clinic-name labels (`clinic_label`) instead of raw clinic IDs in grouping/legends.
+- Error analytics: dashboard table switched to structured error fields (`error_code`, `error_message`) with Top-20 view by clinic label.
+- Dashboard JSON cleanup: ID-oriented columns are configured with neutral display settings (`display_as: null`) where applicable, keeping name-first presentation.
