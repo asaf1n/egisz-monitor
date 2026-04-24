@@ -1,0 +1,29 @@
+# Применяет sql/001_schema.sql и 002 к витрине (egisz-corp apply-schema).
+# Требует Secret egisz-corp-web-config (ключ egisz_corp.yaml) с корректным postgres.host внутри кластера.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: egisz-corp-apply-dwh-schema
+  namespace: egisz-corp
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: apply
+          image: egisz-corp-web:latest
+          imagePullPolicy: IfNotPresent
+          command: ["egisz-corp", "apply-schema"]
+          env:
+            - name: EGISZ_CORP_CONFIG
+              value: /app/config/egisz_corp.yaml
+          volumeMounts:
+            - name: cfg
+              mountPath: /app/config
+              readOnly: true
+      volumes:
+        - name: cfg
+          secret:
+            secretName: egisz-corp-web-config

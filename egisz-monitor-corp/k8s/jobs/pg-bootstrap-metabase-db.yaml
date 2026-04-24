@@ -1,0 +1,33 @@
+# Одноразовое создание БД metabase_app на том же инстансе Postgres (метаданные Metabase).
+# Перед Metabase Deployment. Повторный запуск: удалите Job и pod завершения.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: egisz-corp-pg-bootstrap-metabase
+  namespace: egisz-corp
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 4
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: postgres:16-bookworm
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              PGHOST="${PGHOST:-postgres.egisz-corp.svc.cluster.local}"
+              until pg_isready -h "$PGHOST" -U "$POSTGRES_USER" -d postgres; do sleep 2; done
+              EXISTS=$(PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$PGHOST" -U "$POSTGRES_USER" -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname='metabase_app'" || true)
+              if [ "$EXISTS" = "1" ]; then
+                echo "metabase_app already exists"
+                exit 0
+              fi
+              PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$PGHOST" -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE metabase_app OWNER CURRENT_USER;"
+              echo "created metabase_app"
