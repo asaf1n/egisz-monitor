@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from egisz_monitor_corp.parser import EgiszMonitorParser
 
 
@@ -125,7 +123,7 @@ def test_staging_error_missing_relates() -> None:
     assert errors[0].error_code == "MISSING_RELATES_TO"
 
 
-def test_as_fact_row_json() -> None:
+def test_as_fact_row_errors_list() -> None:
     p = EgiszMonitorParser()
     xml = _soap("ID-5", "error", kind="<ns2:kind>001</ns2:kind>", errors_block="""
       <ns2:errors><ns2:item><ns2:code>C</ns2:code><ns2:message>M</ns2:message></ns2:item></ns2:errors>
@@ -133,5 +131,4 @@ def test_as_fact_row_json() -> None:
     rec = p.build_record(xml)
     assert rec is not None
     row = rec.as_fact_row()
-    arr = json.loads(row["errors_json"])
-    assert arr[0]["code"] == "C"
+    assert row["errors_json"][0]["code"] == "C"

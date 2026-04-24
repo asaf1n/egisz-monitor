@@ -1,36 +1,67 @@
 # egisz-monitor-corp
 
-Корпоративное ядро ETL для мониторинга интеграции МИС с ЕГИСЗ (РЭМД): разбор `EXCHANGELOG.LOGTEXT` (SOAP + транспорт), нормализация и загрузка в PostgreSQL для Metabase.
+Корпоративное ядро ETL для мониторинга интеграции МИС с ЕГИСЗ (РЭМД): выгрузка из Firebird (`EXCHANGELOG` + `EGISZ_MESSAGES` + поля из `EGISZ_LICENSES`), разбор `LOGTEXT` (SOAP + транспорт), загрузка в PostgreSQL для Metabase.
 
 ## Отличия от `egisz-monitor`
 
 - Только Python (без React и без TypeScript ETL).
-- Ключ витрины: `relates_to_id` ← `relatesToMessage` (асинхронная связка), UPSERT в `fact_egisz_transactions`, без watermark по `MODIFYDATE`.
-- Справочник СЭМД перенесён из `backend/src/utils/semdDictionary.ts` в `egisz_monitor_corp/semd_dictionary.py`.
+- Ключ витрины: `relates_to_id` ← `relatesToMessage`, UPSERT в `fact_egisz_transactions`.
+- Водяной знак инкремента: **`LOGID` в `etl_state`**, не `MODIFYDATE` (источник перезаписывается).
+- **KIND** только в `EGISZ_LICENSES` (см. дефолтный SQL в `egisz_monitor_corp/sql_util.py`).
 
 ## Установка
 
 ```bash
 cd egisz-monitor-corp
 pip install -e ".[dev]"
-pytest
+python3 -m pytest
 ```
+
+Требования к окружению: для `firebird-driver` на машине должен быть доступен **Firebird client** (`FB_CLIENT_LIBRARY` или библиотека в `PATH`).
+
+## Конфигурация
+
+1. Скопируйте `config/egisz_corp.example.yaml` → `config/egisz_corp.yaml`.
+2. Либо задайте `EGISZ_CORP_CONFIG=/abs/path/egisz_corp.yaml`.
+
+### Веб-страница настроек (Flask)
+
+```bash
+export EGISZ_CORP_CONFIG=/path/to/egisz_corp.yaml   # опционально
+export CONFIG_WRITE_PATH=/path/to/egisz_corp.yaml   # куда писать при «Сохранить» (по умолчанию = EGISZ_CORP_CONFIG / config/egisz_corp.yaml)
+egisz-corp config-ui
+# http://127.0.0.1:8765/  — хост/порт через FLASK_RUN_HOST / FLASK_RUN_PORT
+```
+
+## CLI
+
+```bash
+egisz-corp test-fb
+egisz-corp test-pg
+egisz-corp apply-schema      # 001_schema + 002_etl_state
+egisz-corp sync              # полный цикл ETL
+egisz-corp sync --dry-run    # только разбор, без записи в PG
+```
+
+## Airflow
+
+DAG: `airflow/dags/egisz_corp_etl_dag.py` — задачи `test_connections` → `corp_sync`.
+
+- Установите пакет в образ/venv Airflow, смонтируйте репозиторий.
+- Переменные Airflow (опционально): `egisz_corp_project_root`, `egisz_corp_config_path`.
+- Расписание: env `EGISZ_CORP_AIRFLOW_SCHEDULE` (по умолчанию `@hourly`).
+
+## Metabase
+
+См. `docs/METABASE.md`: подключение к тому же PostgreSQL, объекты `v_egisz_transactions_enriched`, `stg_parse_errors`, `etl_state`.
 
 ## Схема БД
 
-Файл `sql/001_schema.sql`: `fact_egisz_transactions`, `dim_semd_types`, `dim_clinics`, `stg_parse_errors`, представление `v_egisz_transactions_enriched`.
+- `sql/001_schema.sql` — факты, измерения, витрина.
+- `sql/002_etl_state.sql` — курсор `last_log_id`.
 
 ## API парсера
 
 Класс `EgiszMonitorParser` (`egisz_monitor_corp/parser.py`):
 
-- `parse_xml(xml_string)` — ленивый разбор (нет SOAP-формы → `None`).
-- `extract_jid(log_text)` — `gost-([a-zA-Z0-9_-]+)\.infoclinica\.lan`, токен в lower case, порт не участвует в извлечении.
-- `resolve_clinic(jid, oid, license_jid_by_mo_uid=...)` — приоритет JID из URL, иначе OID → JID из лицензий.
-- `build_record(log_text, kind_from_licenses=..., org_from_licenses=..., license_jid_from_row=..., ...)` — полная запись для факта; **KIND** в источнике только в `EGISZ_LICENSES` (не в `EGISZ_MESSAGES`); при отсутствии `relatesToMessage` — вызов `on_staging_error` и `None`.
-
-## Рекомендации по реализации пайплайна
-
-1. **Пакеты**: накапливать батч кортежей `(logtext, LICENSE_KIND, MO_UID, LICENSE_JID из выборки Firebird)` и вызывать `build_record` без повторного разбора XML там, где в логе нет `registerDocumentResult` / `relatesToMessage` (уже отфильтровано строкой).
-2. **Обогащение**: один раз загрузить `EGISZ_LICENSES (MO_UID → JID)` в `dict` для `license_jid_by_mo_uid`; `JPERSONS` — в `dim_clinics` отдельным потоком.
-3. **UPSERT**: `INSERT ... ON CONFLICT (relates_to_id) DO UPDATE` по всем полям факта, `processed_at = now()`.
+- `parse_xml`, `extract_jid`, `resolve_clinic`, `build_record` — см. docstring в модуле.

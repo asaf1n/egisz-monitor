@@ -71,3 +71,18 @@ FROM EGISZ_LICENSES l
 LEFT JOIN JPERSONS jp ON jp.JID = l.JID
 WHERE l.JID IS NOT NULL
 """.strip()
+
+
+def paginated_exchangelog_sql(inner_select: str, *, last_log_id: int, limit: int) -> str:
+    """Firebird: FIRST n rows with LOGID > cursor, ordered by LOGID (incremental, not MODIFYDATE)."""
+    lid = int(last_log_id)
+    lim = max(1, min(int(limit), 50_000))
+    base = inner_select.strip().rstrip(";")
+    return f"""
+SELECT FIRST {lim} src.*
+FROM (
+{base}
+  AND e.LOGID > {lid}
+ORDER BY e.LOGID
+) src
+""".strip()

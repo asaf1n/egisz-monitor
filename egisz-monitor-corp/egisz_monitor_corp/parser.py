@@ -7,7 +7,6 @@ Tags may use any prefix; matching uses local-name (Clark notation).
 
 from __future__ import annotations
 
-import json
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -96,7 +95,7 @@ class NormalizedRecord:
             "kind_code": self.kind_code,
             "status": self.status,
             "emdr_id": self.emdr_id,
-            "errors_json": json.dumps(self.errors_json, ensure_ascii=False),
+            "errors_json": self.errors_json,
             "registration_date": self.registration_date,
             "processed_at": self.processed_at,
         }
@@ -105,7 +104,7 @@ class NormalizedRecord:
 class EgiszMonitorParser:
     """
     SOAP-focused parser with resilient XML handling and clinic resolution chain:
-    JID from gost- URL → else OID (MO_UID) → license map → JID → optional JPERSONS name.
+    JID: gost- URL → LICENSE_JID из строки Firebird → OID → license map → JPERSONS.
     """
 
     def __init__(self, log_excerpt_max: int = 4000) -> None:
