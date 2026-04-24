@@ -1,0 +1,32 @@
+# Пример конфигурации для подов в Kubernetes (Secret egisz-corp-web-config).
+# Скопируйте в отдельный файл и подставьте реальные хост/пароли Firebird.
+#
+# postgres.host — DNS сервиса витрины в кластере (из пода corp-web / Airflow worker).
+# Firebird — должен быть доступен с сети подов (не localhost).
+
+firebird:
+  host: "10.0.0.50"
+  port: 3050
+  database: "proxy_egisz"
+  user: "SYSDBA"
+  password: "CHANGE_ME"
+  charset: "UTF8"
+  page_size: 4096
+
+postgres:
+  host: "postgres.egisz-corp.svc.cluster.local"
+  port: 5432
+  database: "egisz_corp"
+  user: "egisz_corp"
+  password: "CHANGE_ME_MATCH_POSTGRES_SECRET"
+  schema: "public"
+
+etl:
+  batch_size: 500
+  pipeline_name: "firebird_exchangelog"
+  sync_window_days: 30
+  full_scan: false
+  source_query: null
+
+metabase:
+  site_url: "http://metabase.egisz-corp.svc.cluster.local:3000"

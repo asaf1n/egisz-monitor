@@ -156,9 +156,13 @@ kubectl -n egisz-corp port-forward svc/airflow-webserver 8080:8080
 
 ---
 
-## 7. Metabase
+## 7. Metabase (манифесты в этом репозитории)
 
-В этом репозитории **нет** Helm-чарта Metabase. Поднимите Metabase в k8s отдельно (свой chart/манифесты) и подключите к **той же** витрине PostgreSQL (`postgres:5432`, БД `egisz_corp`). См. также `docs/METABASE.md`.
+- Образ: `metabase/Dockerfile` (Metabase OSS + `provision.sh` / `setup-dashboards.sh` + JSON в `metabase_dashboards/`).
+- Манифесты: `k8s/metabase.yaml`, секрет администратора из `k8s/metabase-admin-secret.example.yaml` → `k8s/metabase-admin-secret.yaml` (в `.gitignore`).
+- Внутренняя БД Metabase: отдельная БД **`metabase_app`** на том же Postgres; создаётся Job `k8s/jobs/pg-bootstrap-metabase-db.yaml` (вызывается из `.\start.ps1`).
+- Подключение к витрине: при первом `/api/setup` Metabase регистрируется источник **EGISZ Corp DWH** на `POSTGRES_DB` из `postgres-credentials` (см. `metabase/provision.sh`).
+- Полный порядок: см. корневой `README.md` и `.\start.ps1 -Action deploy`.
 
 ---
 

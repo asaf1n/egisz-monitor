@@ -53,10 +53,7 @@ PAGE = """
     </fieldset>
     <fieldset>
       <legend>PostgreSQL</legend>
-      <p class="hint"><strong>Postgres из комплекта репозитория:</strong> при <code>.\start.ps1 -Action deploy</code> поднимается один контейнер витрины (см. <code>docker-compose.yml</code> в корне пакета).
-        Внутри контейнера порт <strong>5432</strong>, на Windows к нему ведёт публикация из <code>.env</code> → <code>CORP_DB_PORT</code> (часто <code>5433</code>, чтобы не пересечься с другим Postgres на хосте).
-        В форме: <code>host</code> <code>127.0.0.1</code> или <code>localhost</code>, <code>port</code> = ваш <code>CORP_DB_PORT</code>, учётные данные — из <code>.env</code> (<code>POSTGRES_*</code>), по умолчанию БД и пользователь <code>egisz_corp</code>.
-        При запуске из <code>start.ps1</code> переменные <code>EGISZ_CORP_POSTGRES_*</code> могут временно переопределять поля из YAML.</p>
+      <p class="hint"><strong>PostgreSQL (Kubernetes):</strong> из пода витрины — <code>postgres.egisz-corp.svc.cluster.local:5432</code> (см. <code>k8s/README.md</code>). Port-forward с ПК: <code>kubectl -n egisz-corp port-forward svc/postgres 5432:5432</code>, тогда host <code>127.0.0.1</code>.</p>
       <p class="hint"><strong>Kubernetes:</strong> см. <code>k8s/postgres/</code> — из пода к сервису обычно <code>postgres.egisz-corp.svc.cluster.local:5432</code> (порт сервиса <code>5432</code>).
         С вашего ПК без VPN: <code>kubectl port-forward -n egisz-corp svc/postgres 5432:5432</code>, в форме host <code>127.0.0.1</code>, port <code>5432</code>.</p>
       <label>host <input name="pg_host" value="{{ pg.host }}" required/></label>
@@ -80,6 +77,35 @@ PAGE = """
   <form method="post" action="{{ url_for('test_pg') }}" style="display:inline;">
     <button type="submit">Проверить PostgreSQL</button>
   </form>
+  <fieldset>
+    <legend>Синхронизация Firebird -&gt; PostgreSQL</legend>
+    <p class="hint">Запускает полный цикл ETL в фоне на сервере, где работает это приложение (под в k8s или процесс на ПК). Не закрывайте вкладку до завершения; статус обновляется ниже.</p>
+    <button type="button" id="btnSync">Запустить синхронизацию</button>
+    <pre id="syncStatus" style="background:#f8f8f8;padding:0.75rem;border-radius:6px;min-height:4rem;white-space:pre-wrap;font-size:0.9rem;"></pre>
+  </fieldset>
+  <script>
+  async function pollSync() {
+    const el = document.getElementById('syncStatus');
+    try {
+      const r = await fetch('/api/sync/status');
+      const j = await r.json();
+      const parts = [j.message || '', j.running ? 'Статус: выполняется' : 'Статус: ожидание'];
+      if (j.error) parts.push('Ошибка: ' + j.error);
+      if (j.last_stats) parts.push(JSON.stringify(j.last_stats, null, 2));
+      el.textContent = parts.filter(Boolean).join(String.fromCharCode(10));
+    } catch (e) { el.textContent = 'Ошибка опроса: ' + e; }
+  }
+  document.getElementById('btnSync').onclick = async function() {
+    const el = document.getElementById('syncStatus');
+    el.textContent = 'Запрос...';
+    const r = await fetch('/api/sync/start', { method: 'POST' });
+    const j = await r.json();
+    el.textContent = j.message || JSON.stringify(j);
+    pollSync();
+  };
+  setInterval(pollSync, 3000);
+  pollSync();
+  </script>
 </body>
 </html>
 """
@@ -87,6 +113,10 @@ PAGE = """
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    try:
+        app.json.ensure_ascii = False  # type: ignore[attr-defined]
+    except Exception:
+        pass
 
     def config_path() -> Path:
         w = os.environ.get("CONFIG_WRITE_PATH")
@@ -194,6 +224,10 @@ def create_app() -> Flask:
             PAGE, path=str(p), fb=cfg.firebird, pg=cfg.postgres, etl=cfg.etl, message=msg, ok=ok
         )
 
+    from egisz_monitor_corp.sync_routes import register_sync_routes
+
+    register_sync_routes(app, config_path)
+
     return app
 
 
@@ -203,4 +237,4 @@ def run_dev() -> None:
     app = create_app()
     host = os.environ.get("FLASK_RUN_HOST", "127.0.0.1")
     port = int(os.environ.get("FLASK_RUN_PORT", "8765"))
-    app.run(host=host, port=port, debug=os.environ.get("FLASK_DEBUG") == "1")
+    app.run(host=host, port=port, debug=os.environ.get("FLASK_DEBUG") == "1", threaded=True)
