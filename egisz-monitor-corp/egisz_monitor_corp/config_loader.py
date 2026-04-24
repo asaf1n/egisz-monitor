@@ -86,6 +86,15 @@ def _bool(v: Any, default: bool = False) -> bool:
     return bool(v)
 
 
+def _env_nonempty(key: str) -> str | None:
+    """Return stripped env value, or None if unset/blank (do not treat as override)."""
+    v = os.environ.get(key)
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s if s else None
+
+
 def load_corp_config(path: Path | None = None) -> CorpAppConfig:
     cfg_path = path or default_config_path()
     if not cfg_path.is_file():
@@ -115,12 +124,12 @@ def load_corp_config(path: Path | None = None) -> CorpAppConfig:
             page_size=_int(fb.get("page_size"), 4096),
         ),
         postgres=PostgresConfig(
-            host=_str(pg.get("host")),
-            port=_int(pg.get("port")),
-            database=_str(pg.get("database")),
-            user=_str(pg.get("user")),
-            password=_str(pg.get("password")),
-            schema=_str(pg.get("schema"), "public"),
+            host=_env_nonempty("EGISZ_CORP_POSTGRES_HOST") or _str(pg.get("host")),
+            port=_int(_env_nonempty("EGISZ_CORP_POSTGRES_PORT") or pg.get("port")),
+            database=_env_nonempty("EGISZ_CORP_POSTGRES_DB") or _str(pg.get("database")),
+            user=_env_nonempty("EGISZ_CORP_POSTGRES_USER") or _str(pg.get("user")),
+            password=_env_nonempty("EGISZ_CORP_POSTGRES_PASSWORD") or _str(pg.get("password")),
+            schema=_env_nonempty("EGISZ_CORP_POSTGRES_SCHEMA") or _str(pg.get("schema"), "public"),
         ),
         etl=EtlConfig(
             batch_size=_int(etl.get("batch_size"), 500),

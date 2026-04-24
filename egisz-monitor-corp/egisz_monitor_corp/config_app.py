@@ -53,8 +53,12 @@ PAGE = """
     </fieldset>
     <fieldset>
       <legend>PostgreSQL</legend>
-      <p class="hint">В Kubernetes (см. <code>k8s/postgres/</code>): часто <code>postgres.egisz-corp.svc.cluster.local</code>, порт <code>5432</code>.
-        Снаружи кластера — <code>kubectl port-forward -n egisz-corp svc/postgres 5432:5432</code>, тогда host <code>127.0.0.1</code>.</p>
+      <p class="hint"><strong>Postgres из комплекта репозитория:</strong> при <code>.\start.ps1 -Action deploy</code> поднимается один контейнер витрины (см. <code>docker-compose.yml</code> в корне пакета).
+        Внутри контейнера порт <strong>5432</strong>, на Windows к нему ведёт публикация из <code>.env</code> → <code>CORP_DB_PORT</code> (часто <code>5433</code>, чтобы не пересечься с другим Postgres на хосте).
+        В форме: <code>host</code> <code>127.0.0.1</code> или <code>localhost</code>, <code>port</code> = ваш <code>CORP_DB_PORT</code>, учётные данные — из <code>.env</code> (<code>POSTGRES_*</code>), по умолчанию БД и пользователь <code>egisz_corp</code>.
+        При запуске из <code>start.ps1</code> переменные <code>EGISZ_CORP_POSTGRES_*</code> могут временно переопределять поля из YAML.</p>
+      <p class="hint"><strong>Kubernetes:</strong> см. <code>k8s/postgres/</code> — из пода к сервису обычно <code>postgres.egisz-corp.svc.cluster.local:5432</code> (порт сервиса <code>5432</code>).
+        С вашего ПК без VPN: <code>kubectl port-forward -n egisz-corp svc/postgres 5432:5432</code>, в форме host <code>127.0.0.1</code>, port <code>5432</code>.</p>
       <label>host <input name="pg_host" value="{{ pg.host }}" required/></label>
       <label>port <input name="pg_port" type="number" value="{{ pg.port }}" required/></label>
       <label>database <input name="pg_database" value="{{ pg.database }}" required/></label>

@@ -17,7 +17,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--config", type=str, default=None, help="Path to egisz_corp.yaml (or EGISZ_CORP_CONFIG)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("sync", help="Run Firebird → Postgres ETL")
+    s = sub.add_parser("sync", help="Run Firebird -> Postgres ETL")
     s.add_argument("--dry-run", action="store_true", help="Parse only, no Postgres writes")
 
     t = sub.add_parser("test-fb", help="SELECT 1 FROM RDB$DATABASE on Firebird")

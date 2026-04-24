@@ -1,73 +1,171 @@
-# Kubernetes: PostgreSQL для EGISZ Monitor Corp
+# Kubernetes: PostgreSQL и Apache Airflow (egisz-monitor-corp)
 
-## Развёртывание
+Целевой контур: **namespace `egisz-corp`**. Здесь размещаются **витрина PostgreSQL** (данные ETL / Metabase) и **Apache Airflow** (расписание, DAG `egisz_corp_firebird_to_postgres`).
 
-1. Создайте секрет с учётными данными (не коммитьте в git):
+Локальный `docker-compose.yml` в корне пакета — **отдельная среда для разработки на одной машине**; для продакшена ориентируйтесь на этот каталог `k8s/`.
 
-   ```bash
-   cp k8s/postgres/postgres-secret.example.yaml k8s/postgres/postgres-secret.yaml
-   # отредактируйте POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
-   ```
+---
 
-2. Примените манифесты:
+## 1. PostgreSQL (`k8s/postgres/`)
 
-   ```bash
-   kubectl apply -f k8s/postgres/namespace.yaml
-   kubectl apply -f k8s/postgres/postgres-secret.yaml
-   kubectl apply -f k8s/postgres/postgres-statefulset.yaml
-   kubectl apply -f k8s/postgres/postgres-service.yaml
-   ```
+### Секрет
 
-   Либо без Kustomize — только перечисленные файлы.
+```bash
+cp k8s/postgres/postgres-secret.example.yaml k8s/postgres/postgres-credentials.yaml
+# отредактируйте POSTGRES_PASSWORD и при необходимости POSTGRES_USER / POSTGRES_DB
+```
 
-3. Дождитесь готовности пода:
+Имя Secret в манифестах: **`postgres-credentials`** (файл на диске можете назвать `postgres-credentials.yaml`).
 
-   ```bash
-   kubectl -n egisz-corp rollout status statefulset/postgres
-   kubectl -n egisz-corp get pods -l app.kubernetes.io/name=postgres
-   ```
+### Применение
 
-## Подключение к PostgreSQL
+```bash
+kubectl apply -f k8s/postgres/namespace.yaml
+kubectl apply -f k8s/postgres/postgres-credentials.yaml
+kubectl apply -f k8s/postgres/postgres-statefulset.yaml
+kubectl apply -f k8s/postgres/postgres-service.yaml
+```
 
-### Из пода ETL / Airflow / config-ui в том же кластере
+Либо `kubectl apply -k k8s/postgres/` после того, как рядом с `kustomization.yaml` лежит ваш `postgres-credentials.yaml` (добавьте его в `resources` в kustomization при желании; по умолчанию секрет в kustomization не включён).
 
-На странице конфигурации (или в `egisz_corp.yaml`) укажите:
+### Готовность
+
+```bash
+kubectl -n egisz-corp rollout status statefulset/postgres
+kubectl -n egisz-corp get pods -l app.kubernetes.io/name=postgres
+```
+
+### Подключение из кластера
 
 | Поле | Значение |
-|------|----------|
-| host | `postgres.egisz-corp.svc.cluster.local` (или коротко `postgres.egisz-corp`) |
+|------|-----------|
+| host | `postgres.egisz-corp.svc.cluster.local` (внутри namespace достаточно `postgres`) |
 | port | `5432` |
-| database | как в `POSTGRES_DB` секрета |
-| user / password | из секрета |
+| database / user / password | из секрета `postgres-credentials` |
 
-### С рабочей машины (Windows), Metabase на хосте
+### Схема DWH
 
-По умолчанию сервис `ClusterIP` **недоступен** снаружи кластера. Варианты:
-
-1. **Port-forward** (для админки и первичной настройки):
-
-   ```bash
-   kubectl -n egisz-corp port-forward svc/postgres 5432:5432
-   ```
-
-   Тогда на Windows в конфиге: `host=127.0.0.1`, `port=5432`.
-
-2. Отдельный **Service type LoadBalancer** или **Ingress** для PostgreSQL — обычно не рекомендуется в проде; предпочтительно Metabase внутри кластера или VPN + внутренний DNS.
-
-## Схема DWH после поднятия БД
-
-Из каталога пакета (или образа с установленным `egisz-monitor-corp`):
+Из образа или CI с установленным пакетом:
 
 ```bash
 export EGISZ_CORP_CONFIG=/path/to/egisz_corp.yaml
 egisz-corp apply-schema
 ```
 
-## Firebird с Windows-клиента и страница конфигурации
+`egisz_corp.yaml` → секция `postgres` должна указывать на этот сервис (не на localhost).
 
-Поля **host / port / database** на странице — те же, что для **TCP-подключения** к серверу Firebird (как в DBeaver / FlameRobin / isql).
+---
 
-- **Проверить Firebird** выполняется **на той машине/в том поде**, где запущен Flask (`egisz-corp config-ui`). Это не проверка с вашего ПК напрямую: если UI в Kubernetes, до БД Firebird должен дойти **под** (маршрутизация, firewall, `FB_HOST` доступен из кластера).
-- С **Windows** вы можете независимо проверить те же параметры в **DBeaver**: хост = `fb_host`, порт = `fb_port`, база = alias или путь **на сервере Firebird**, как в конфиге.
+## 2. База метаданных Airflow на том же Postgres
 
-Подробности — блок «Подключение Firebird» на веб-странице конфигурации.
+Один инстанс Postgres, **вторая БД** `airflow` для служебных таблиц Airflow (не смешивать с `egisz_corp`).
+
+```bash
+kubectl -n egisz-corp apply -f k8s/postgres/airflow-metadata-init-job.yaml
+kubectl -n egisz-corp logs job/airflow-metadata-db-init -f
+```
+
+Повтор при уже существующей БД: Job завершится без ошибок (проверка `EXISTS`). Сменить имя Job или удалить старый: `kubectl -n egisz-corp delete job/airflow-metadata-db-init`.
+
+---
+
+## 3. Секрет подключения Airflow → Postgres (метаданные)
+
+Helm chart ожидает Secret с ключом **`connection`** (строка SQLAlchemy).
+
+```bash
+cp k8s/airflow/airflow-metadata-secret.example.yaml k8s/airflow/airflow-metadata-secret.yaml
+# выставьте тот же пароль, что в postgres-credentials, в строке connection
+kubectl apply -f k8s/airflow/airflow-metadata-secret.yaml
+```
+
+---
+
+## 4. Образ Airflow с пакетом и DAG
+
+Воркеры выполняют `PythonOperator` и импортируют `egisz_monitor_corp`; DAG лежит в `airflow/dags/`.
+
+```bash
+cd egisz-monitor-corp
+docker build -f k8s/airflow/Dockerfile -t <registry>/egisz-corp-airflow:2.9.3 .
+docker push <registry>/egisz-corp-airflow:2.9.3
+```
+
+При необходимости установите клиент Firebird в образе (см. комментарии в `k8s/airflow/Dockerfile`).
+
+В `k8s/airflow/values-corp.example.yaml` укажите `images.airflow.repository` и `images.airflow.tag` на собранный образ.
+
+---
+
+## 5. Конфиг ETL для подов Airflow (рекомендуется)
+
+Не храните пароли Firebird только в образе. Создайте Secret из файла:
+
+```bash
+kubectl -n egisz-corp create secret generic egisz-corp-app-config \
+  --from-file=egisz_corp.yaml=./config/egisz_corp.yaml \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Добавьте в Helm values (фрагмент) монтирование и переменную окружения для **Celery workers** (и при необходимости для других компонентов, где исполняются таски):
+
+```yaml
+workers:
+  celery:
+    extraVolumes:
+      - name: egisz-corp-config
+        secret:
+          secretName: egisz-corp-app-config
+    extraVolumeMounts:
+      - name: egisz-corp-config
+        mountPath: /opt/egisz-monitor-corp/config/egisz_corp.yaml
+        subPath: egisz_corp.yaml
+        readOnly: true
+    env:
+      - name: EGISZ_CORP_CONFIG
+        value: /opt/egisz-monitor-corp/config/egisz_corp.yaml
+```
+
+Пути в DAG по умолчанию: `EGISZ_CORP_PROJECT_ROOT=/opt/egisz-monitor-corp`, конфиг — `egisz_corp.yaml` внутри образа; Secret смонтированный поверх перекрывает файл из образа.
+
+---
+
+## 6. Установка Airflow (Helm)
+
+```bash
+helm repo add apache-airflow https://airflow.apache.org/charts
+helm repo update
+helm upgrade --install airflow apache-airflow/airflow \
+  --namespace egisz-corp \
+  -f egisz-monitor-corp/k8s/airflow/values-corp.example.yaml
+```
+
+Зафиксируйте версию chart для продакшена, например: `--version 1.18.0` (подберите совместимую с вашим кластером).
+
+### UI без Ingress
+
+```bash
+kubectl -n egisz-corp port-forward svc/airflow-webserver 8080:8080
+```
+
+Учётная запись из `createUserJob.defaultUser` в values (смените пароль).
+
+### DAG
+
+Файл репозитория: `airflow/dags/egisz_corp_etl_dag.py`. После сборки образа он копируется в `/opt/airflow/dags/`. Расписание: переменная окружения `EGISZ_CORP_AIRFLOW_SCHEDULE` (в values через `env`) или правка DAG.
+
+---
+
+## 7. Metabase
+
+В этом репозитории **нет** Helm-чарта Metabase. Поднимите Metabase в k8s отдельно (свой chart/манифесты) и подключите к **той же** витрине PostgreSQL (`postgres:5432`, БД `egisz_corp`). См. также `docs/METABASE.md`.
+
+---
+
+## 8. Port-forward с рабочей машины
+
+```bash
+kubectl -n egisz-corp port-forward svc/postgres 5432:5432
+```
+
+Для админских задач; для продакшена предпочтительны Metabase и ETL внутри кластера.
