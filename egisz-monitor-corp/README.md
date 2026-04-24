@@ -27,10 +27,10 @@ pytest
 - `parse_xml(xml_string)` — ленивый разбор (нет SOAP-формы → `None`).
 - `extract_jid(log_text)` — `gost-([a-zA-Z0-9_-]+)\.infoclinica\.lan`, токен в lower case, порт не участвует в извлечении.
 - `resolve_clinic(jid, oid, license_jid_by_mo_uid=...)` — приоритет JID из URL, иначе OID → JID из лицензий.
-- `build_record(log_text, kind_from_messages=..., kind_from_licenses=..., ...)` — полная запись для факта; при отсутствии `relatesToMessage` — вызов `on_staging_error` и `None`.
+- `build_record(log_text, kind_from_licenses=..., org_from_licenses=..., license_jid_from_row=..., ...)` — полная запись для факта; **KIND** в источнике только в `EGISZ_LICENSES` (не в `EGISZ_MESSAGES`); при отсутствии `relatesToMessage` — вызов `on_staging_error` и `None`.
 
 ## Рекомендации по реализации пайплайна
 
-1. **Пакеты**: накапливать батч кортежей `(logtext, kind_msg, kind_lic, mo_uid_map_row)` и вызывать `build_record` без повторного разбора XML там, где в логе нет `registerDocumentResult` / `relatesToMessage` (уже отфильтровано строкой).
+1. **Пакеты**: накапливать батч кортежей `(logtext, LICENSE_KIND, MO_UID, LICENSE_JID из выборки Firebird)` и вызывать `build_record` без повторного разбора XML там, где в логе нет `registerDocumentResult` / `relatesToMessage` (уже отфильтровано строкой).
 2. **Обогащение**: один раз загрузить `EGISZ_LICENSES (MO_UID → JID)` в `dict` для `license_jid_by_mo_uid`; `JPERSONS` — в `dim_clinics` отдельным потоком.
 3. **UPSERT**: `INSERT ... ON CONFLICT (relates_to_id) DO UPDATE` по всем полям факта, `processed_at = now()`.

@@ -91,11 +91,11 @@ def test_parse_xml_errors_array() -> None:
     assert out["errors"][0]["code"] == "E1"
 
 
-def test_kind_fallback_from_messages() -> None:
+def test_kind_fallback_from_licenses_only() -> None:
     p = EgiszMonitorParser()
     xml = _soap("MSG-003", "success", kind=None, org=None, success_block="")
     log = "http://gost-7.infoclinica.lan\n" + xml
-    rec = p.build_record(log, kind_from_messages="43")
+    rec = p.build_record(log, kind_from_licenses="43")
     assert rec is not None
     assert rec.kind_code == "43"
     assert "Направление" in (rec.kind_name or "")

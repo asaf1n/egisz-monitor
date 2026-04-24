@@ -248,13 +248,18 @@ class EgiszMonitorParser:
         jid_from_url: int | None,
         oid: str | None,
         *,
+        license_jid_from_row: int | None = None,
         license_jid_by_mo_uid: Mapping[str, int] | None = None,
     ) -> tuple[int | None, str | None]:
         """
-        Resolve internal JID: URL wins; else map organization OID → EGISZ_LICENSES.JID.
+        Resolve internal JID: URL → EGISZ_LICENSES.JID from extraction row → OID map.
         """
         if jid_from_url is not None and jid_from_url > 0:
             return jid_from_url, None
+
+        lj = license_jid_from_row
+        if lj is not None and lj > 0:
+            return int(lj), None
 
         oid_n = _norm_ws(oid)
         if oid_n and license_jid_by_mo_uid:
@@ -268,13 +273,15 @@ class EgiszMonitorParser:
         self,
         log_text: str | None,
         *,
-        kind_from_messages: str | int | None = None,
         kind_from_licenses: str | int | None = None,
+        org_from_licenses: str | None = None,
+        license_jid_from_row: int | None = None,
         license_jid_by_mo_uid: Mapping[str, int] | None = None,
         on_staging_error: Callable[[StagingParseError], None] | None = None,
     ) -> NormalizedRecord | None:
         """
-        Parse LOGTEXT, apply KIND fallbacks, resolve JID. UPSERT key: relates_to_id.
+        Parse LOGTEXT; KIND only from XML then EGISZ_LICENSES (KIND is not on messages).
+        MO_UID from licenses used when SOAP omits organization. Resolve JID. UPSERT: relates_to_id.
         """
         excerpt = (log_text or "")[: self.log_excerpt_max]
 
@@ -303,21 +310,21 @@ class EgiszMonitorParser:
 
         if not kind_code:
             kind_code = _norm_kind_code(
-                str(kind_from_messages).strip() if kind_from_messages is not None else None
-            )
-        if not kind_code:
-            kind_code = _norm_kind_code(
                 str(kind_from_licenses).strip() if kind_from_licenses is not None else None
             )
+
+        org_license = _norm_ws(org_from_licenses)
+        org_for_resolve = org_oid or org_license
 
         kind_name = get_semd_name(kind_code) if kind_code else get_semd_name(None)
 
         jid_resolved, oid_kept = self.resolve_clinic(
             jid_url,
-            org_oid,
+            org_for_resolve,
+            license_jid_from_row=license_jid_from_row,
             license_jid_by_mo_uid=license_jid_by_mo_uid,
         )
-        org_out = org_oid or oid_kept
+        org_out = org_oid or org_license or oid_kept
 
         def _stage(err: StagingParseError) -> None:
             if on_staging_error:
