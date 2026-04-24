@@ -6,3 +6,6 @@ __pycache__/
 dist/
 build/
 .venv/
+
+# K8s secrets (created from *.example.yaml locally)
+k8s/postgres/postgres-secret.yaml

@@ -32,6 +32,14 @@ PAGE = """
   <h1>Конфигурация БД (EGISZ Monitor Corp)</h1>
   <p class="hint">Файл: <code>{{ path }}</code>. Переопределение: переменная окружения <code>EGISZ_CORP_CONFIG</code>
      или <code>CONFIG_WRITE_PATH</code> для записи.</p>
+  <fieldset>
+    <legend>Подключение Firebird (в т.ч. с Windows)</legend>
+    <p class="hint">Поля ниже — это <strong>TCP к серверу Firebird</strong> (как в DBeaver / isql): хост и порт — где слушает <code>firebird.conf</code> (часто <code>3050</code>),
+      <strong>database</strong> — имя alias или полный путь к <code>.fdb</code> <em>на стороне сервера Firebird</em>, не путь на вашем ПК.</p>
+    <p class="hint">DSN для драйвера Python (<code>firebird-driver</code>): <code>{{ fb.host }}/{{ fb.port }}:{{ fb.database }}</code> (см. также документацию пакета).</p>
+    <p class="hint"><strong>Проверить Firebird</strong> выполняется на машине/в поде, где запущен этот веб-интерфейс. Если UI в Kubernetes, до Firebird должен быть доступ <strong>из пода</strong> (сеть, firewall).
+      С Windows вы можете отдельно проверить те же host/port/database в DBeaver — это подтвердит доступность с вашей сети.</p>
+  </fieldset>
   {% if message %}<p class="{{ 'ok' if ok else 'err' }}">{{ message }}</p>{% endif %}
   <form method="post" action="{{ url_for('save') }}">
     <fieldset>
@@ -45,6 +53,8 @@ PAGE = """
     </fieldset>
     <fieldset>
       <legend>PostgreSQL</legend>
+      <p class="hint">В Kubernetes (см. <code>k8s/postgres/</code>): часто <code>postgres.egisz-corp.svc.cluster.local</code>, порт <code>5432</code>.
+        Снаружи кластера — <code>kubectl port-forward -n egisz-corp svc/postgres 5432:5432</code>, тогда host <code>127.0.0.1</code>.</p>
       <label>host <input name="pg_host" value="{{ pg.host }}" required/></label>
       <label>port <input name="pg_port" type="number" value="{{ pg.port }}" required/></label>
       <label>database <input name="pg_database" value="{{ pg.database }}" required/></label>
